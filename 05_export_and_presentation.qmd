@@ -1,0 +1,699 @@
+---
+title: "Module 2: Notebook 5"
+author: "Chip O'Connell, PhD and Corey Sparks, PhD"
+subtitle: "Preparing Results for Export and Presentation"
+toc: true
+toc_depth: 3
+toc_float:
+  collapsed: no
+  smooth_scroll: yes
+toc_location: left
+number-sections: true
+format: 
+  html:
+    embed-resources: true
+    df-print: paged
+    html-math-method: mathml
+---
+
+![](images/ada_sticker.png){fig-align="center"}
+
+# Introduction
+```{r setup, include=FALSE}
+#HIDE THIS CHUNK FROM KNITTED OUTPUT
+knitr::opts_chunk$set(include=TRUE, echo=TRUE, eval = FALSE,  warning = FALSE, fig.align = 'center')  #results=‘hide’) # needs to delete results=‘hide’
+```
+This notebook provides information on how to prepare research output for presentation while also ensuring disclosure guidelines are followed. It outlines how to prepare different kinds of outputs before submitting an export request and gives an overview of the information needed for disclosure review. *Please read through the entire notebook because it will separately discuss all types of outputs that will be flagged in the disclosure review process.*
+
+## Export Guidelines
+
+-   **Each team is able to export up to 10 figures/tables**
+
+-   **Every statistic for export must be based on at least 10 individuals (unique ssns, not rows)**
+
+    -   Statistics that are based on 0-9 individuals must be supressed
+
+-   **Counts must be rounded**
+
+    -   Counts below 1000 must be rounded to the nearest ten
+    -   Counts greater than or equal to 1000 must be rounded to the nearest hundred \> For example, a count of 868 would be rounded to 870, and a count of 1868 would be rounded to 1900.
+
+-   **Reported wages must be rounded to the nearest hundred**
+
+-   **Reported averages must be rounded to the nearest tenth**
+
+-   **Percentages and proportions must be rounded**
+
+    -   The same rounding rules applied to counts must be applied to both the numerator and denominator before finding the percentage/proportion
+    -   Percentages must then be rounded to the nearest percent
+    -   Proportions must be rounded to the nearest hundredth
+
+-   **Exact percentiles cannot be exported**
+
+    -   Instead, for example, you may calculate a **fuzzy median**, by averaging the true 45th and 55th percentiles
+        -   If you are calculating fuzzy wage percentiles, you will need to round to the nearest hundred after calculating the fuzzy percentile
+        -   If you are calculating fuzzy percentiles for counts of individuals, you will need to round to the nearest 10 if the count is less than 1000 and to the nearest hundred if the count is greater than or equal to 1000
+
+-   **Exact maxima and minima cannot be exported**
+
+    -   Suppress maximum and minimum values in general
+    -   You may replace an exact maximum or minimum with a top-coded value or a fuzzy maximum or minimum value. For example: If the maximum value for earnings is 154,325, it could be top-coded as '100,000+'. Another permissible approach using this example would be calculating a fuzzy maximum value by using the formula below:
+
+    $$\frac{90th\ percentile\ of\ earnings + 154325}{2}$$
+
+-   **Complementary suppression**
+
+    -   If your files include totals or are dependent on a preceding or subsequent file, you need to take into account complementary disclosure risksâthat is assessing if the figure totals or the separate figures, when read together, might disclose information about less then 10 individuals or employers in the data in a way that a single, simpler file would not. Team leads and export reviewers will work with you on implementing any necessary complementary suppression techniques
+
+## Supporting Documentation for Exports
+
+You will need to provide a table with **underlying counts** of individuals and employers (where appropriate) for each statistic depicted in the file requested for export.
+
+-   You will need to include both the rounded and the unrounded counts of individuals
+
+-   If percentages or proportions are to be exported, you must report both the rounded and the unrounded counts of individuals for the numerator and denominator. You must also report the counts of employers for both the numerator and the denominator when working with wage records
+
+**Code** - Please provide the code written to create every output requested for export and the code generating every table (csv) with underlying counts. It is important for the ADRF staff to have the code to better understand what exactly was done and replicate results. Understanding how research results are created is important in understanding the research output. Thus, it is important to document every step of the analysis in your code file(s).
+
+## Goal
+
+In this notebook, we will show you how to implement the above export rules while creating the necessary input files and supporting code to create presentation-ready visualizations in R.
+
+# Technical Setup
+
+Code chunks in this notebook will be provided in both SQL and R, so follow the setup sections below if you are interested in establishing your own SQL and R environments for running the code.
+
+Typically, throughout these workbooks, we use SQL for the majority of data exploration and creation of the analytic frame, and then read that analytic frame into R for the descriptive analysis and visualization. You will see options for writing SQL code in R, but not vice versa. We discuss this approach in a later section.
+
+::: {.callout collapse="true"}
+## SQL Setup
+
+For working with the database directly using SQL, the easiest way is to still copy the SQL commands from this notebook (available within the `SQL Query` tab views) into a script in DBeaver. As a reminder, the steps to do so are as follows:
+
+1.  Open DBeaver, located on the ADRF Desktop. The icon looks like this
+
+![](images/dbeaver.png)
+
+2.  Establish your connection to the database by logging in. To do this, double-click `Redshift11_projects` on the left hand side, and it will ask for your username and password. Your username is `adrf\` followed by the name of your U: drive folder - for example, `adrf\JOhn.Doe.T00113`. Your password is the same password that you use to log into the ADRF.
+
+After you successfully establish your connection, you should see a green check next to the database name, like so:
+
+![](images/success.png)
+
+3.  In the top menu bar, click **SQL Editor** then **New SQL Script**:
+
+![](images/new_script.png)
+
+4.  To test if your connection is working, try pasting the following chunk of code into your script:
+
+```{sql, eval=FALSE}
+SELECT *
+FROM ds_pa_sshe.enrollment
+LIMIT 5;
+```
+
+Then run it by clicking the run button next to the script, or by pressing CTRL + ENTER.
+
+5.  You should then be able to see the query output in the box below the code.
+:::
+
+::: {.callout collapse="true"}
+## R Setup
+
+#### Install Packages {.unnumbered}
+
+Because we have left the world of the Foundations Module and entered a new workspace, we need to re-install packages that are not native to the base R environment. **We only need to do this once - this workflow for programming in R is identical to that outside the ADRF.**
+
+::: callout-note
+In the ADRF, you are limited to installing packages available on the Comprehensive R Archive Networks, commonly referred to as CRAN. CRAN is the primary centralized repository for R packages. Packages must meet certain requirements before they can become available on CRAN. Outside the ADRF, you can install packages available on other repositories, such as those accessible on Github repositories.
+:::
+
+To install a package, in the console in R studio, type the following:
+
+```{r, eval=FALSE}
+install.packages('INSERT_PACKAGE_NAME')
+```
+
+For example, to install the package `RJDBC` (for establishing our connection to the database), you should type:
+
+```{r, eval=FALSE}
+install.packages("RJDBC")
+```
+
+If you run this, you should see a set of messages in your console similar to the below:
+
+![](images/RJDBC_install.png)
+
+After running this, `RJDBC` will be installed for you within your ADRF workspace. You will not need to reinstall it each time you log back into the workspace.
+
+There are two simple ways to identify if a package has already been installed in your environment:
+
+1.  You can run `library(INSERT_PACKAGE_NAME)`, and if it returns an error like the following, it has not been installed properly:
+
+![](images/error.png)
+
+2.  You can manually check in the bottom right pane inside R Studio by selecting the Packages tab and seeing if the package is available. Packages should be sorted alphabetically and those with a check beside them have not just already been installed, but also loaded into the environment for use:
+
+![](images/package_pane.png)
+
+**To install all of the packages you will need for this notebook, please run the following:**
+
+```{r, eval=FALSE}
+install.packages(RJDBC)
+install.packages(tidyverse)
+install.packages(dbplyr)
+```
+
+Additionally, in order to establish our database connection in R, please install the following custom package that has already been uploaded into the P: drive of this workspace:
+
+```{r, eval=FALSE}
+install.packages("P:/tr-ihep-2025-pa/R_packages/ColeridgeInitiative_0.1.2.zip")
+```
+
+#### Load Libraries {.unnumbered}
+
+After installing these packages, we next need to load them to make them available in our R environment. This is identical to the procedure we followed in the Foundations Module
+
+```{r}
+library(ColeridgeInitiative)
+library(tidyverse)
+library(dbplyr)
+```
+
+#### Establish Database Connection {.unnumbered}
+
+To load data from the Redshift server into R, we need to first set up a connection to the database. The following command will prompt you for password and establish the connection:
+
+```{r}
+con <- adrf_redshift(usertype = "training")
+```
+:::
+
+# Creating the cohort
+
+Let's start by pulling in our cohort from notebook 2 that we stored in `final_result`:
+
+::: {.callout collapse="true"}
+## `dbplyr` Query
+
+```{r, eval=FALSE}
+# library(dplyr)
+# library(dbplyr)
+
+# Step 1: Define the cohort
+cohort_model <- con %>%
+  tbl(in_schema("tr_ihep_2025_pa", "pa_fact_quarterly_observation_new")) %>%
+  filter(enrolled_primary_major_level == 'UG', enrollment_status == 'Y') %>%
+  group_by(ssn) %>%
+  mutate(min_qtr = min(quarter_id)) %>%
+  filter(quarter_id == min_qtr, quarter_id == 60) %>%
+  ungroup() %>%
+  mutate(quarter_id = min_qtr) %>%
+  distinct(ssn, quarter_id)
+
+# Step 2: Load outcome data
+outcome_data <- con %>%
+  tbl(in_schema("tr_ihep_2025_pa", "pa_fact_quarterly_observation_new"))
+
+# Step 3: Load person data and filter to cohort only
+person_data <- con %>%
+  tbl(in_schema("tr_ihep_2025_pa", "pa_mdim_person")) %>%
+  semi_join(cohort_model, by = "ssn") %>% 
+select(ssn, sex_code, race_ethnicity, pellrecipient)
+
+# Step 4: Join cohort with outcome data (non-equi join on quarter_id)
+result <- cohort_model %>%
+  left_join(outcome_data, join_by(ssn == ssn, quarter_id <= quarter_id)) %>%
+  filter(quarter_id.y >= 60) %>%
+  select(ssn, 
+         cohort_qtr = quarter_id.x, 
+         outcome_qtr = quarter_id.y,
+         total_wages, 
+         completion_status)
+
+# Step 5: Join person-level metadata into result
+result_with_person <- result %>%
+  left_join(person_data, by = "ssn")
+
+# Step 6: Pull to R
+final_result <- result_with_person %>%
+  collect()
+```
+
+## SQL Query
+
+```{sql}
+SELECT "LHS".*, "sex_code", "race_ethnicity", "pellrecipient"
+FROM (
+  SELECT
+    "ssn",
+    "quarter_id.x" AS "cohort_qtr",
+    "quarter_id.y" AS "outcome_qtr",
+    "total_wages",
+    "completion_status"
+  FROM (
+    SELECT
+      "LHS"."ssn" AS "ssn",
+      "LHS"."quarter_id" AS "quarter_id.x",
+      "pa_fact_quarterly_observation_new"."quarter_id" AS "quarter_id.y",
+      "enrollment_status",
+      "enrolled_primary_institution",
+      "enrolled_primary_hours_attempted",
+      "enrolled_primary_hours_completed",
+      "enrolled_primary_full_time_ind",
+      "enrolled_first_time",
+      "enrolled_primary_major",
+      "enrolled_primary_degree_sought",
+      "enrolled_primary_residency",
+      "number_enrollments",
+      "primary_institution_total_price",
+      "primary_institution_grant_aid",
+      "primary_institution_loan_aid",
+      "primary_institution_work_aid",
+      "primary_institution_pell",
+      "completion_status",
+      "completed_primary_degree",
+      "completed_primary_major",
+      "completed_primary_institution",
+      "number_completions",
+      "employed_status",
+      "primary_employer_id",
+      "primary_employer_wages",
+      "naics_level6_code",
+      "total_wages",
+      "employer_count",
+      "enrolled_primary_major_area",
+      "completed_primary_degree_area",
+      "enrolled_primary_major_level",
+      "completed_primary_degree_level"
+    FROM (
+      SELECT DISTINCT "ssn", "min_qtr" AS "quarter_id"
+      FROM (
+        SELECT
+          "pa_fact_quarterly_observation_new".*,
+          MIN("quarter_id") OVER (PARTITION BY "ssn") AS "min_qtr"
+        FROM "tr_ihep_2025_pa"."pa_fact_quarterly_observation_new"
+        WHERE
+          ("enrolled_primary_major_level" = 'UG') AND
+          ("enrollment_status" = 'Y')
+      ) "q01"
+      WHERE ("quarter_id" = "min_qtr") AND ("quarter_id" = 60.0)
+    ) "LHS"
+    LEFT JOIN "tr_ihep_2025_pa"."pa_fact_quarterly_observation_new"
+      ON (
+        "LHS"."ssn" = "pa_fact_quarterly_observation_new"."ssn" AND
+        "LHS"."quarter_id" <= "pa_fact_quarterly_observation_new"."quarter_id"
+      )
+  ) "q01"
+  WHERE ("quarter_id.y" >= 60.0)
+) "LHS"
+LEFT JOIN (
+  SELECT "ssn", "sex_code", "race_ethnicity", "pellrecipient"
+  FROM "tr_ihep_2025_pa"."pa_mdim_person"
+  WHERE EXISTS (
+    SELECT 1 FROM (
+    SELECT DISTINCT "ssn", "min_qtr" AS "quarter_id"
+    FROM (
+      SELECT
+        "pa_fact_quarterly_observation_new".*,
+        MIN("quarter_id") OVER (PARTITION BY "ssn") AS "min_qtr"
+      FROM "tr_ihep_2025_pa"."pa_fact_quarterly_observation_new"
+      WHERE
+        ("enrolled_primary_major_level" = 'UG') AND
+        ("enrollment_status" = 'Y')
+    ) "q01"
+    WHERE ("quarter_id" = "min_qtr") AND ("quarter_id" = 60.0)
+) "RHS"
+    WHERE ("pa_mdim_person"."ssn" = "RHS"."ssn")
+  )
+) "RHS"
+  ON ("LHS"."ssn" = "RHS"."ssn")
+```
+:::
+
+# Visual 1 - Bar chart displaying rounded race counts
+
+For our first visualization, let's create a bar chart displaying the racial distribution of our cohort, being sure to round our counts to follow disclosure guidelines
+
+## Rounding Counts - Race
+
+The first step is to construct the data frame we will display. Let's start by calculating counts of the number of students that self-identify in each racial category.
+
+```{r}
+race_counts <- final_result %>% 
+  group_by(race_ethnicity) %>%
+  summarize(count=n_distinct(ssn)) %>% 
+  collect()
+
+race_counts
+```
+
+Remember, though, in order to follow the disclosure guidelines, we need to round our counts.
+
+```{r}
+race_counts_rounded <- race_counts %>%
+  mutate(rounded_counts = if_else(as.numeric(count)<1000,
+                                  round(as.numeric(count), digits=-1),
+                                  round(as.numeric(count), digits=-2)))
+
+race_counts_rounded
+```
+
+In order to export the above information, you will need to submit two tables:
+
+  1. `race_counts_rounded` - You will need to submit the table above under the export documentation section, in order to show the export reviewers both the unrounded counts as well as the rounded counts.
+  2. You will also need to submit an additional table under the export section. This table should remove the unrounded counts column. This is the table that will actually be exported from the ADRF, and the table you will receive when you export request is approved. The code chunk below will create a table that removes the raw `count` column from the `race_counts_rounded` table by utilizing the `!` operator, which indicates we want to `select` all columns except for the `count` column.
+  
+```{r}
+race_counts_to_export <- race_counts_rounded %>% select(!count)
+```
+
+## Creating the bar chart
+
+Now we can craft our bar chart, being sure to display the rounded counts. The only things we need to supply `ggplot` with to make this graph are the data frame to use, x and y values, and the `geom_col()` function so that it knows we want a bar plot.
+
+```{r fig.height=6}
+ggplot(race_counts_to_export, aes(x=race_ethnicity, y=rounded_counts)) +
+geom_col()
+```
+As you can see, however, there are several things we could do to this graph to make it more presentation-ready. First, let's give the bars some color. We can do this by providing `geom_col()` with a `fill` argument listing our color of choice. Next, we give the graph a title with `ggtitle()`. Then, using the `theme()` function, we center the title and rotate the x-axis tick labels 45 degrees. Finally, we the x- and y-axis more professional labels. 
+
+```{r fig.height=6}
+ggplot(race_counts_to_export,
+    aes(x=fct_reorder(race_ethnicity, rounded_counts, .desc=T),
+      y=rounded_counts)) +
+  geom_col(fill='blue') +
+  ggtitle("Fall 2015 Entry Cohort by Race & Ethnicity") +
+  theme(axis.text.x = element_text(angle = 45, hjust=0.9),
+        plot.title = element_text(hjust = 0.5)) +
+  ylab("# of Students") +
+  xlab("Race/Ethnicity")
+```
+
+## Percentage Distribution of Race
+
+Instead of raw counts, perhaps we would like to display the percentage distribution of race across our cohort. In order to follow disclosure guidelines, any percentages must be based on rounded numerator and denominators, and then the percentage itself must be rounded as well.
+
+```{r}
+race_percentages <- final_result %>% 
+  group_by(race_ethnicity) %>%
+  summarize(count=n_distinct(ssn)) %>% 
+  mutate(total=sum(count),
+         rounded_count = if_else(as.numeric(count)<1000,
+                                  round(as.numeric(count), digits=-1),
+                                  round(as.numeric(count), digits=-2)),
+         rounded_total = round(total, digits=-2),
+         percentage = rounded_count/rounded_total*100,
+         rounded_percent = round(percentage)) %>% 
+  collect()
+
+race_percentages
+```
+
+## Bar Chart Showing Percentage Distribtuion of Race
+
+We can graph this information in a similar graph as the one above, making sure to display our rounded percentages.
+
+```{r fig.height=6}
+ggplot(race_percentages, 
+    aes(x=fct_reorder(race_ethnicity, percentage, .desc=T),
+    y=percentage)) +
+  geom_col(fill='blue') +
+  ggtitle("Fall 2015 Entry Cohort by Race & Ethnicity") +
+  theme(axis.text.x = element_text(angle = 45, hjust=0.9),
+        plot.title = element_text(hjust = 0.5)) +
+  ylab("% of Total Cohort") +
+  xlab("Race/Ethnicity")
+```
+
+# Checking number of students - cohort broken down by race and gender
+
+When we examine the distribution of race across our cohort, all of the the counts are greater than 10, so we do not need to worry about redaction. However, more granular analyses may require closer inspection. Let's examine counts by both race and gender.
+
+```{r}
+demo_counts <- final_result %>% 
+  group_by(race_ethnicity, sex_code) %>%
+  summarize(count=n_distinct(ssn)) %>% 
+  arrange(count) %>% 
+  collect()
+
+demo_counts
+```
+
+## Redacting ouput based on 10 or fewer students
+
+As seen in `demo_counts`, information about female Native Hawaiian or Pacific Islander students will need to be redacted.
+
+```{r}
+redacted_demo_counts <- final_result %>% 
+  group_by(race_ethnicity, sex_code) %>%
+  summarize(count=n_distinct(ssn)) %>% 
+  mutate(redacted_counts=if_else(count<11, NA, count)) %>%
+  arrange(count) %>% 
+  collect()
+
+redacted_demo_counts
+```
+
+## Bar Chart Race and Gender
+
+Now let's graph our redacted data. Note the absence of a bar representing female Native Hawaiian or Pacific Islander students. Also note the addition of the `labs()` argument, which allows us to set the title of the legend.
+
+```{r fig.height=6, fig.width=10}
+ggplot(redacted_demo_counts %>% filter(race_ethnicity!='White'),
+    aes(x=fct_reorder(race_ethnicity, redacted_counts, .desc=T), 
+    y=redacted_counts,
+    fill=sex_code)) +
+  geom_col(position='dodge') +
+  ggtitle("Fall 2015 Entry Cohort by Race & Ethnicity") +
+  theme(axis.text.x = element_text(angle = 45, hjust=0.9),
+        plot.title = element_text(hjust = 0.5)) +
+  ylab("# of Students") +
+  xlab("Race/Ethnicity") +
+  labs(fill = "Sex")
+```
+
+## Complementary Disclosure
+
+This might be a good place to discuss complimentary disclosure. If you want to export both counts by race as well counts by race and gender, you might need to do more redaction. Looking at the `race_counts` table, we can see that there are 20 Native Hawaiian or Pacific Islander students. Looking at the `fuzzy_medians_race_gender` table, we can see that 12 of these students were male and 8 were female. If we only want to export the `fuzzy_median_race_gender` table, then we can only redact any information based on the 8 female Native Hawaiian and Pacific Islander students, leaving information based on the 12 male student intact. **However**, if we want to export both the `race_counts` table and the `fuzzy_medians_race_gender` table, then we also need to redact information on the 12 male students. The reason for this is that we know from the `race_counts` table that there were 21 Native Hawaiian or Pacific Islander students in total, and if we include information about the 12 male students in the `fuzzy_medians_race_gender` table, then we can deduce from that information that there were 9 female students, and releasing that information would violate the export rules.
+
+This is the problem of complimentary disclosure, i.e. when redacted information in one table can be logically deduced when combined with data from another table. This problem arises most often when trying to export information about a total group as well as information about subgroups from within the larger group. 
+
+Keep in mind that not only counts, but **any statistic** will need to meet complimentary disclosure guidelines. Please pay particular attention to complimentary disclosure issues, and consult your team leads if you have any questions or concerns.
+
+# Visual 2 - Line chart of fuzzy median wages for completers vs. non-completers
+
+Moving on to our second visualization, let's create a line chart showing the difference in median wages for completers vs. non-completers. We first calculate mean wages by race, to demonstrate how to follow disclosure guidelines. We then calculate fuzzy median wages to demonstrate a special function contained in the `ColeridgeInitiative` package created for this purpose, and then we will calculate fuzzy median wages for completer and non-completers to make our line chart.
+
+## Calculating mean wages
+
+First, let's calculate mean wages by race. We know from our analyses above that our counts are all above 10, so we do not need to worry about checking our counts here. However, we do need to round our mean wages. As stated above, wages need to be rounded to the nearest hundred.
+
+```{r}
+mean_wages_by_race <- final_result %>% 
+  group_by(race_ethnicity) %>% 
+  summarize(mean_wages=mean(as.numeric(total_wages), na.rm=T),
+            round_mean_wages = round(mean_wages, digits=-2))
+
+mean_wages_by_race
+```
+
+## Calculating Fuzzy Medians
+
+As discussed above, exact medians cannot be exported from the ADRF. You will need to calculate **fuzzy medians**, by taking the average of the 45th and 55th percentiles. The `ColeridgeInitiative` R package contains a `fuzmed` function that can do this for you.
+
+```{r}
+fuzzy_median <- final_result %>% 
+  summarize(fuzzy_medians=fuzmed(as.numeric(total_wages)))
+```
+
+Keep in mind, though, that we still need to round our fuzzy medians to comply with disclosure guidelines
+
+```{r}
+fuzzy_median_rounded <- fuzzy_median %>%
+  round(digits=-2)
+```
+
+## Fuzzy Medians by Race
+
+Let's calculate fuzzy median wages by race.
+
+```{r}
+fuzzy_medians_by_race <- final_result %>% 
+  group_by(race_ethnicity) %>% 
+  summarize(fuzzy_medians=fuzmed(as.numeric(total_wages)),
+            fuzzy_medians_rounded=round(fuzzy_medians, digits=-2))
+
+fuzzy_medians_by_race
+```
+
+## Fuzzy Medians by Race and Gender
+
+As discussed above, more granular analyses, such as one examining both race and gender, might require a greater level of redaction. Keep in mind that any statistic - not just count - based on 10 or fewer students will need to be redacted.
+
+```{r}
+fuzzy_medians_race_gender <- final_result %>% 
+  group_by(race_ethnicity, sex_code) %>% 
+  summarize(count=n_distinct(ssn),
+            fuzzy_medians=fuzmed(as.numeric(total_wages))) %>% 
+  mutate(redacted_count=if_else(count<11, NA, count),
+         redacted_wages=if_else(count<11, NA, fuzzy_medians)) %>% 
+  arrange(count)
+
+fuzzy_medians_race_gender
+```
+
+## Fuzzy Medians for Completers vs. Non-Completers
+
+Let's calculate fuzzy medians for completers vs non-completers in each quarter after enrollment. We include many of the disclosure steps we have discussed above. First, we calculate fuzzy median wages by completion status and the count of students that fall into each category in each quarter (note that we drop observations with missing wages so that our counts do not include them). Then we redact counts and wages based on 10 or fewer students. Finally, we round our remaining count value and fuzzy median wages.
+
+```{r}
+wages <- final_result %>%
+  group_by(ssn) %>% 
+  mutate(completer=if_else(any(completion_status=='Y'), 1, 0)) %>%
+  filter(outcome_qtr>60 & outcome_qtr<90) %>% 
+  drop_na(total_wages) %>% #Drop records with missing wages so our counts do not include them
+  group_by(completer, outcome_qtr) %>%
+  summarize(count=n(),
+            fuzzy_medians=fuzmed(as.numeric(total_wages)))%>% 
+  mutate(redacted_count=if_else(count<11, NA, count),
+         redacted_wages=if_else(count<11, NA, fuzzy_medians),
+         rounded_counts=if_else(as.numeric(count)<1000,
+                                  round(as.numeric(count), digits=-1),
+                                  round(as.numeric(count), digits=-2)),
+         rounded_wages=round(redacted_wages, digits=-2)) %>%
+arrange(outcome_qtr)
+
+wages
+```
+
+## Making the Line Chart
+
+Now we can make our line chart. We include many of the techniques we have previously discussed when creating this chart. One difference between this chart and previous charts in this notebook is that, instead of including separate `ggtile()`, `xlab()`, and `ylab()` components, we have included all of this information in the `labs()` component. This makes the code slightly more concise, but slightly less explicit. Your choice!
+
+```{r}
+ggplot(wages, aes(x=outcome_qtr,
+    y=redacted_wages,
+    group=as.factor(completer),
+    color=as.factor(completer))) +
+geom_line() +
+labs(title = "Quarterly Wages for Fall 2015 Enrollees",
+    subtitle = "Completers vs. Non-Completers",
+     x="Calendar Quarter",
+     y="Median Wages",
+     color="Completion Status")+
+geom_smooth(method = "lm")
+```
+
+# Visual 3 - Boxplot of fuzzy medians by race
+
+For our final visualization, let's make a box plot displaying the distributions of wages across race. It can be difficult to follow disclosure rules when making box plots, as there are several rules to follow to make one plot: you need to calculate fuzzy medians, suppress exact minima and maxima, etc. This is why the `ColeridgeInitiative` package also contains a `fuzzy_boxplot` function, which handles all of this for you. This function creates a `ggplot` graphic under the hood, so we can include all of `ggplot` workflow that we have introduced above to edit the graph to meet specific editorial needs.
+
+```{r}
+final_result <- final_result %>%
+  mutate(total_wages = as.numeric(total_wages))
+```
+
+```{r}
+fuzzy_boxplot(final_result, y="total_wages", x='race_ethnicity', id = "ssn") +
+  ylim(0, 150000) +
+  theme(axis.text.x = element_text(angle = 45, hjust=0.9)) +
+  labs(title="Wages by Race",
+       x="Race and Ethnicitiy",
+       y="Total Wages") 
+```
+
+
+# Exporting graphs and tables
+Your export can containg both graphs and tabular output, or you can choose to only export tables and create graphs outside of the ADRF. 
+To create a graph image for export, we will use the example above of the boxplot. 
+
+For a `ggplot2` object, like the boxplot above, you can use the `ggsave()` function to write the plot to an image. The safest way to do this is to assign the plot to an object name, here we will call the plot `myexp1`, then save this object as a png image with a specified height and width (in inches) and resolution.
+
+```{r}
+myexp1 <- fuzzy_boxplot(final_result, y="total_wages", x='race_ethnicity', id='ssn') +
+  ylim(0, 150000) +
+  theme(axis.text.x = element_text(angle = 45, hjust=0.9)) +
+  labs(title="Wages by Race",
+       x="Race and Ethnicitiy",
+       y="Total Wages") 
+
+ggsave(myexp1, filename = "P:/tr-ihep-2025-pa/Class_notebooks/myexp1.png",
+  dpi = "print", height = 6, width = 8)
+```
+Remember, we must also provide the table to support this plot, and we need the *documentation* version, which has the original median and rounded and unrounded counts, **AND** the export version which has the fuzzy medians and rounded counts.
+```{r}
+documetation_table1 <- final_result %>% 
+group_by(race_ethnicity) %>% 
+summarize(nssn = n_distinct(ssn),
+actualmedian = median(total_wages, na.rm=T),
+fuzzymedian = fuzmed(total_wages)) %>% 
+mutate(rnd_ssn = round(nssn,-1))
+
+
+export_table1 <- final_result %>% 
+group_by(race_ethnicity) %>% 
+summarize(nssn = n_distinct(ssn),
+fuzzymedian = fuzmed(total_wages)) %>% 
+mutate(rnd_ssn = round(nssn,-1)) %>% 
+select(-nssn)
+
+```
+
+A good way to export both of these files is as csv files:
+
+```{r}
+documetation_table1 %>% 
+  write_csv(file = "P:/tr-ihep-2025-pa/Class_notebooks/documentation_table1.csv")
+
+
+export_table1 %>% 
+  write_csv(file = "P:/tr-ihep-2025-pa/Class_notebooks/export_table1.csv")
+
+```
+
+
+If you have several files you want to export, it may be easier to create an Excel workbook and put the tables in as sheets. This example shows how to do this using the 
+
+
+```{r}
+library(openxlsx)  ## Need to install this package first
+exportnb <- createWorkbook()
+addWorksheet(exportnb, "export_tab1")
+addWorksheet(exportnb, "export_tab2")
+
+
+```
+
+Now we make our additional export table, here just some counts
+```{r}
+export_table2 <- final_result %>% 
+group_by(race_ethnicity) %>% 
+summarize(nssn = n_distinct(ssn)) %>% 
+mutate(rnd_ssn = round(nssn,-1)) %>% 
+select(-nssn)
+```
+
+Next we add the sheets to the Excel workbook
+
+```{r}
+export_table1 %>% 
+writeDataTable(exportnb,x=., sheet ='export_tab1')
+
+export_table2 %>% 
+writeDataTable(exportnb,x=., sheet ='export_tab2')
+
+```
+
+Then we write the Excel workbook to a file:
+
+```{r}
+saveWorkbook(exportnb, "P:/tr-ihep-2025-pa/Class_notebooks/export_example.xlsx", overwrite = T)
+
+```
+
+This is a nice way to save all your export and documentation tables in a single location.
+
+
+# Applying this Notebook to your Project
+This notebook should provide you with examples for checking your export tables for issues with redaction and for generating the export files themselves. 

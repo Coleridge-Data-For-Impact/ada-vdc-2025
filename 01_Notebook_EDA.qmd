@@ -1,0 +1,1104 @@
+---
+title: "Module 2: Notebook 1"
+author: "Chip O'Connell, Ph.D., Corey Sparks, Ph.D."
+subtitle: Exploratory Data Analysis (EDA)
+toc: true
+toc_depth: 3
+toc_float:
+  collapsed: no
+  smooth_scroll: yes
+toc_location: left
+number-sections: true
+format: 
+  html:
+    embed-resources: true
+    df-print: paged
+---
+
+![](images/ada_sticker.png){fig-align="center"}
+
+# Introduction
+
+Welcome to the first workbook for Module 2 of this course, covering **Exploratory Data Analysis**, or EDA.
+
+In the Foundations Module, we introduced EDA within the larger process of **data discovery**. EDA helps you ensure that the provided data suits your desired analysis and that you have the necessary understanding to make informed analytic decisions as you work through your project. In this workbook, we are going to be exploring the main higher education data sets we will use in this course: the Pennsylvania State System of Higher Education's (PASSHE) `enrollment`, `completions`, and `financial_aid` data sets. For each data set, we will work to answer the following key data discovery questions:
+
+-   **What is the structure of the data set?** What is the layout of the data? What variables are available? What are their types? How do we interpret the meaning of a single row?
+
+-   **What is the coverage of the data set?** What years, geographic regions, institutions, and other subgroups are covered by the data?
+
+-   **What is the distribution of the variables in the data set?** Are there missing observations, outliers, and other aspects we need to adjust for later in analysis? Are there any interesting patterns worth further investigating?
+
+## The Purpose of these Notebooks
+
+You will now have the opportunity to apply the skills covered in both modules thus far to restricted use PASSHE data. With your team, you will carry out a detailed analysis of this data and prepare a final project showcasing your results.
+
+These workbooks are here to help you along in this project development by showcasing how to apply the techniques discussed in class to the PASSHE data. Part of this notebook will be technical - providing basic code snippets your team can **modify** to begin parsing through the data. As always, however, there will also be an applied data literacy component of these workbooks, and it should help you develop a better understanding of the structure and use of the underlying data even if you never writer a line of code.
+
+The timeline for completing these workbooks will be provided on the training website and communicated to you in class.
+
+# Technical Setup
+
+Code chunks in this notebook will be provided in both SQL and R, so follow the setup sections below if you are interested in establishing your own SQL and R environments for running the code.
+
+Typically, throughout these workbooks, we use SQL for the majority of data exploration and creation of the analytic frame, and then read that analytic frame into R for the descriptive analysis and visualization. You will see options for writing SQL code in R, but not vice versa. We discuss this approach in a later section.
+
+::: {.callout collapse="true"}
+## SQL Setup
+
+For working with the database directly using SQL, the easiest way is to still copy the SQL commands from this notebook (available within the `SQL Query` tab views) into a script in DBeaver. As a reminder, the steps to do so are as follows:
+
+1.  Open DBeaver, located on the ADRF Desktop. The icon looks like this
+
+![](images/dbeaver.png)
+
+2.  Establish your connection to the database by logging in. To do this, double-click `Redshift11_projects` on the left hand side, and it will ask for your username and password. Your username is `adrf\` followed by the name of your U: drive folder - for example, `adrf\JOhn.Doe.T00113`. Your password is the same password that you use to log into the ADRF.
+
+After you successfully establish your connection, you should see a green check next to the database name, like so:
+
+![](images/success.png)
+
+3.  In the top menu bar, click **SQL Editor** then **New SQL Script**:
+
+![](images/new_script.png)
+
+4.  To test if your connection is working, try pasting the following chunk of code into your script:
+
+```{sql, eval=FALSE}
+SELECT *
+FROM ds_pa_sshe.enrollment
+LIMIT 5;
+```
+
+Then run it by clicking the run button next to the script, or by pressing CTRL + ENTER.
+
+5.  You should then be able to see the query output in the box below the code.
+:::
+
+::: {.callout collapse="true"}
+## R Setup
+
+#### Install Packages {.unnumbered}
+
+Because we have left the world of the Foundations Module and entered a new workspace, we need to re-install packages that are not native to the base R environment. **We only need to do this once - this workflow for programming in R is identical to that outside the ADRF.**
+
+::: callout-note
+In the ADRF, you are limited to installing packages available on the Comprehensive R Archive Networks, commonly referred to as CRAN. CRAN is the primary centralized repository for R packages. Packages must meet certain requirements before they can become available on CRAN. Outside the ADRF, you can install packages available on other repositories, such as those accessible on Github repositories.
+:::
+
+To install a package, in the console in R studio, type the following:
+
+```{r, eval=FALSE}
+install.packages('INSERT_PACKAGE_NAME')
+```
+
+For example, to install the package `RJDBC` (for establishing our connection to the database), you should type:
+
+```{r, eval=FALSE}
+install.packages("RJDBC")
+```
+
+If you run this, you should see a set of messages in your console similar to the below:
+
+![](images/RJDBC_install.png)
+
+After running this, `RJDBC` will be installed for you within your ADRF workspace. You will not need to reinstall it each time you log back into the workspace.
+
+There are two simple ways to identify if a package has already been installed in your environment:
+
+1.  You can run `library(INSERT_PACKAGE_NAME)`, and if it returns an error like the following, it has not been installed properly:
+
+![](images/error.png)
+
+2.  You can manually check in the bottom right pane inside R Studio by selecting the Packages tab and seeing if the package is available. Packages should be sorted alphabetically and those with a check beside them have not just already been installed, but also loaded into the environment for use:
+
+![](images/package_pane.png)
+
+**To install all of the packages you will need for this notebook, please run the following:**
+
+```{r, eval=FALSE}
+install.packages(RJDBC)
+install.packages(tidyverse)
+install.packages(dbplyr)
+```
+
+Additionally, in order to establish our database connection in R, please install the following custom package that has already been uploaded into the P: drive of this workspace:
+
+```{r, eval=FALSE}
+install.packages("P:\tr-ihep-2025-pa\R_packages\ColeridgeInitiative_0.1.0.tar.gz")
+```
+
+#### Load Libraries {.unnumbered}
+
+After installing these packages, we next need to load them to make them available in our R environment. This is identical to the procedure we followed in the Foundations Module
+```{r setup, include=FALSE}
+#HIDE THIS CHUNK FROM KNITTED OUTPUT
+knitr::opts_chunk$set(include=TRUE, echo=TRUE, eval = FALSE,  warning = FALSE, fig.align = 'center')  #results=‘hide’) # needs to delete results=‘hide’
+```
+```{r}
+library(ColeridgeInitiative)
+library(tidyverse)
+library(dbplyr)
+```
+
+#### Establish Database Connection {.unnumbered}
+
+To load data from the Redshift server into R, we need to first set up a connection to the database. The following command will prompt you for password and establish the connection:
+
+```{r}
+con <- adrf_redshift(usertype = "training")
+```
+
+
+:::
+
+# PASSHE Enrollment Data: `ds_pa_sshe.enrollment`
+
+The **PASSHE Enrollment Data**, stored on Redshift as `ds_pa_sshe.enrollment` provides information on all student enrollment in the Pennsylvania State System of Higher Education. Let's begin the EDA process by examining this data set.
+
+::: callout-note
+### New Package `dbplyr`
+
+In the examples that follow, a new package for interacting with databases without writing SQL code is also shown. The `dbplyr` package interfaces with a database using standard `dbplyr` and `tidyverse` workflows, and complementary code is shown for all SQL query examples. Just like the SQL code, this should be run and executed from R using the connection we established in the collapsed "Technical Setup" section above.
+:::
+
+## Structure
+
+Let's begin answering our key data discovery questions. First - what is the structure of the PASSHE Enrollment data? There are two dimensions to this question:
+
+-   What variables are available in the enrollment data?
+-   What does each row in the enrollment data represent?
+
+Just like in the Foundations module, we begin by glancing at a few rows of the `enrollment` table:
+
+> Note: Because the output is easier to parse through on an HTML document, we have the SQL option wirtten so taht you can directly copy and paste them into DBEaver. If you would like to run them in RStudio, and not use the `dbplyr` code, you can do so by using the workflow we introduced in the Foundations Module by first running `qry <- "INSERT SQL CODE"` and then `dbGetQuery(con, qry)`.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query
+
+```{sql}
+SELECT *
+FROM ds_pa_sshe.enrollment
+LIMIT 5;
+```
+
+## `dbplyr` query
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "enrollment")) %>% 
+  head(n=5)
+```
+:::
+
+We can see that there are 39 columns in the `enrollment` table. It would also be nice to have a clear understanding of what each observation - or row - in the table represents.
+
+To know what we are aiming for, we an find the total number of rows in the `enrollments` table:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*)
+FROM ds_pa_sshe.enrollment;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "enrollment")) %>% 
+  tally()
+```
+:::
+
+Let's think about the three categories of variables that might appear in our data set to uniquely define our rows.
+
+### Unit of Observation
+
+The first category to consider is *variables that describe the unit of observation*. Recall that the unit of observation refers to the type of entity or object about which data is collected. This could be a person, an organization, a state, or any other entity that is the focus of data collection.
+
+In the case of the PASSHE enrollment data, our unit of observation is the person - an individual student who enrolled in the Pennsylvania State System of Higher Education. Besides leveraging background information on the nature of the data, we can identify this because `ssn` - a column representing hashed social security numbers - is a person-level variable in our data set representing the smallest single unit identified in the data.
+
+Importantly, recall that the unit of observation alone does not necessarily define a row for our data. We can test this by counting the number unique hashed social security numbers in our data relative to the total number of rows:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*) AS n_rows, COUNT(DISTINCT(ssn)) AS n_people
+FROM ds_pa_sshe.enrollment
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "enrollment")) %>% 
+  summarize(
+    n_rows = n(),
+    n_people = n_distinct(ssn)
+  )
+```
+:::
+
+We see that there are far fewer unique `ssn` values than total rows in the table. This indicates that `ssn` alone does not define a row of our data - some individuals must appear in the data more than once. Why might there be multiple observations for the same individual? One of the most common reasons is our next topic to discuss: time.
+
+### Period of Observation
+
+One of the most common reasons individual entities may appear multiple times in a data set is that data about each unit of observation is observed at multiple points in time, with information stored in separate rows corresponding to each distinct point in time. Recall that we can refer to the variables describing the *period of observation* as the *time dimension(s)*, sometimes referred to as the *temporal dimension(s)*.
+
+In the PASSHE enrollment data, the period of observation is represented by the variable `academic_period_desc` which lists the academic term of enrollment, as well as `academic_period_code`, which is a numerical representation of the academic term.
+
+Let's look at the amount of unique combinations of `ssn` and `academic_period_desc` combined:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+WITH dis AS (
+  SELECT DISTINCT academic_period_desc, ssn
+  FROM ds_pa_sshe.enrollment
+)
+SELECT COUNT(*)
+FROM dis;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "enrollment")) %>% 
+  distinct(academic_period_desc, ssn, campus_name) %>% 
+tally()
+```
+:::
+
+We still see a difference here between the number of unique person-enrollment period and the total number of rows from our first query. Perhaps there are some other variables that help constitute a row in the data, or perhaps there may be some duplicate observations.
+
+### Attributes
+
+What about the other 37 columns in the `enrollment` table? Three columns represent institutional attributes: `university_name`, `campus_name`, and `ipeds_unitid`. The remaining columns all record attributes about the individual student. These attributes can be divided into two categories: background attributes and enrollment-related attributes:
+
+-   Background Attributes: These columns record information on the background of the student, including things like physical address (e.g. `city`, `state_abbrev` and `zip`), demographic information (e.g. `sex_code` and `race_ethnicity`), as well as academic history (e.g. `hs_gpa` and `sat_composite_score`).
+
+-   Enrollment-Related Attributes: These columns record information generated during the course of the enrollment period, and are typically about the student's performance and experience during the enrollment period. This includes, among other variables, whether they were full or part time (`fulltime_parttime`), their major (`major_cip6_title`), and the number of credits completed during the period (`credits_completed_for_term`).
+
+## Coverage
+
+The next step of our exploratory data analysis is to determine the data coverage: what time span, institutions, and important subgroups are captured in the data? Luckily, this is pretty straightforward for the PASSHE data: we know that it covers all institutions within the Pennsylvania State System of Higher Education, and the group covered is any student enrolled in one of these institutions. To confirm, let's examine the unique values of `university_name`:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT DISTINCT(university_name)
+FROM ds_pa_sshe.enrollment;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "enrollment")) %>% 
+  distinct(university_name)
+```
+:::
+
+We can follow a similar approach for time periods - that being said, because we know the data is tracked over time, it might be helpful to find the number of rows corresponding to each time frame. To do so, we can group our data by `academic_period_desc` and aggregate the number of rows.
+
+> Note: On the SQL tab, since we are planning on reading this output into R, we have used the `qry <- "INSERT SQL CODE"`and `dbGetQuery(con, qry)` workflow.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL query {.unnumbered}
+
+```{sql}
+SELECT academic_period_desc, COUNT(*)
+FROM ds_pa_sshe.enrollment
+GROUP BY academic_period_desc
+ORDER BY academic_period_desc;
+
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+counts_by_period <- con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "enrollment")) %>% 
+  select(academic_period_desc) %>% 
+  group_by(academic_period_desc) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(academic_period_desc) %>% 
+  collect() %>% 
+  mutate_at(vars(n), .funs = "as.numeric")
+
+counts_by_period
+```
+:::
+
+We can read through the table above and begin to get a feeling for the number of individuals covered in each period, but you can also use this same summary dataset to quickly calculate our coverage:
+
+```{r}
+counts_by_period %>% 
+  summarize(
+    min_period = min(academic_period_desc),
+    max_period = max(academic_period_desc)
+  )
+```
+
+From this, we can see that the PASSHE Enrollment data begins in the Fall Semester of 2004 and ends with the first Summer session of 2024.
+
+We can also find the enrollment period that had the highest level of enrollment by examining the period with the highest number of observations:
+
+```{r}
+counts_by_period %>% 
+  filter(
+    n == max(n)
+  )
+```
+
+## Select Variable Distribution
+
+The final part of data discovery is investigating the distribution of key variables in our dataset, and documenting any irregularities such as missingness, outliers, invalid values, or other issues that need to be addressed in an analysis leveraging these data components. We'll look at a few of the variables from the `enrollment` table now, but this type of exploration is more of an art than a science, and the continued exploration of these variables will be an essential component of your project in this program. As a reminder, you are encouraged to use this code as inspiration in your own exploration.
+
+### `academic_period_desc`
+
+Let's begin by taking the same data pull we just used to examine the data coverage, and plot the data using a simple line plot:
+
+```{r, fig.width=10, fig.height=6}
+counts_by_period %>% 
+  ggplot(aes(
+    x = academic_period_desc,
+    y = as.numeric(n),
+    group = 1
+  )) +
+  geom_line() +
+  labs(x = "Enrollment Period", y = "Count", title = "Count of Enrolled Students by Enrollment Period") +
+
+  # rotate x-axis text to avoid overlap
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size=6))
+
+```
+
+Take some time to examine this graph. Does anything catch your eye?
+
+### `credits_completed_for_term`
+
+Of course, we can also examine patterns in others columns. As a final example for the `enrollment` table, let's examine the `credits_completed_for_term` column:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+
+SELECT AVG(credits_completed_for_term) AS avg_credits, academic_period_desc
+FROM ds_pa_sshe.enrollment
+GROUP BY academic_period_desc
+ORDER BY academic_period_desc
+
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+avg_by_period <- con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "enrollment")) %>% 
+  select(credits_completed_for_term, academic_period_desc) %>% 
+  group_by(academic_period_desc) %>% 
+  summarize(avg_credits = mean(credits_completed_for_term)) %>% 
+  ungroup() %>% 
+  arrange(academic_period_desc) %>% 
+  collect() %>%
+  mutate_at(vars(avg_credits) ,.funs= "as.numeric")
+
+avg_by_period
+```
+:::
+
+And we can visualize the data using a simple line plot:
+
+```{r, fig.width=10, fig.height=6}
+avg_by_period %>%  
+  ggplot(aes(
+    x = academic_period_desc,
+    y = avg_credits,
+  group=1)
+  ) +
+  geom_line()
+```
+
+There are more than 30 additional columns in the `enrollment` table. We encourage you to explore these columns for yourself and with your team. For now, we move on to discussing the other PASSHE datasets.
+
+# PASSHE Completions Data: `ds_pa_sshe.completions`
+
+The PASSHE completions data contains information on all students who completed the program within which they were enrolled.
+
+## Structure
+
+First, just as we did in the previous section, we will explore the basic structure of the data by examining the first few rows of the table:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT *
+FROM ds_pa_sshe.completions
+LIMIT 5;
+```
+
+## `dbplyr` Query
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "completions")) %>% 
+  head()
+```
+:::
+
+We can see that there are 20 columns in this table. Let's take a look at the total number of rows in the data:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*)
+FROM ds_pa_sshe.completions
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "completions")) %>% 
+  tally()
+```
+:::
+
+### Unit of Observation
+
+The `completions` table records information on earned degrees, so the unit of observation for this table is the degree. Let's take a look at the number of unique `ssn`s and compare it to the total number of rows:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*), COUNT(DISTINCT(ssn))
+FROM ds_pa_sshe.completions
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "completions")) %>% 
+  summarise(
+    n_rows = n(),
+    n_people = n_distinct(ssn)
+  )
+```
+:::
+
+We can see from the above output that there are about 50,000 more rows than unique people in the data. The most likely reason for this is individuals receiving multiple degrees. Let's take our code a step further and investigate the number of unique `ssn`-`award_desc` pairs:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+WITH dis AS (
+  SELECT DISTINCT ssn, award_desc
+  FROM ds_pa_sshe.completions
+)
+SELECT COUNT(*)
+FROM dis
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "completions")) %>%
+  distinct(ssn, award_desc) %>% 
+  tally()
+```
+:::
+
+This gets us much closer to our total number of rows.
+
+### Period of observation
+
+The `completions` table, again, records information on the earned degree. A degree is conferred at a snapshot in time, and therefore there are not multiple observations for a degree. So while there are columns that record the date which the degree was earned, there is no time dimension for each degree for us to investigate. We can certainly look at the number of degrees earned in a period, however, which we will do in the coverage section aftger discussing some of the attributes to be found in the `completions` data.
+
+### Attributes
+
+As we saw earlier, there are 18 other columns in the `completions` table. If we wanted to simply see the names of those columns, we can do so using the code below:
+
+::: {.panel-tabset .unnumbered .unlisted}
+```{sql}
+SHOW COLUMNS from table projects.ds_pa_sshe.completions
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "completions")) %>% 
+  colnames()
+```
+:::
+
+From looking at the tables printed earlier as well as the list of column names just printed, we can see the remainder of the `completions` table contains information about the degree, including when tghe degree was awarded, the student's GPA while earning the degree and the number of credits completed to earn the degree.
+
+## Coverage
+
+We will proceed by assessing the coverage of the `completions` data. Let's start by examining the institutions covered in the data set, to ensure we have the same coverage as the `enrollment` data:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT DISTINCT(university_name)
+FROM ds_pa_sshe.completions
+```
+
+## `dbplyr` Query
+
+```{r}
+con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "completions"
+)) %>% 
+distinct(university_name)
+
+```
+:::
+
+Of course, we can also inspect the coverage from a time perspective. Let's count the number of observations by `academic_period_desc`:
+
+::: {.panel-tabset .unnumber .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+
+SELECT COUNT(*), academic_period_desc
+FROM ds_pa_sshe.completions
+GROUP BY academic_period_desc
+ORDER BY academic_period_desc
+
+```
+
+## `dbplyr` Query
+
+```{r}
+count_by_period <- con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "completions"
+)) %>% 
+  group_by(academic_period_desc) %>% 
+  summarise(n=n()) %>% 
+  ungroup() %>% 
+  arrange(academic_period_desc) %>% 
+  collect()
+
+count_by_period
+```
+:::
+
+As shown in the table above, the `completions` table records information from the Fall 2006 semester until the first Summer session of 2024. This is similar to the `enrollment` table's coverage, except that table begins in Fall 2006. In other words, the `completions` table has two fewer years of coverage than the `enrollment` table.
+
+## Select Variable Distribution
+
+Let's wrap up our exploration of the `completions` table by examining the distribution of a few variables.
+
+# PASSHE Financial Aid Data: `ds_pa_sshe.financial_aid`
+
+The final PASSHE table for us to look at is the `financial_aid` table, which records information on all financial aid recieved by an enrolled student in a given academic year. Let's follow the same exploratory process we used for the previous datasets, beginning by exploring the structure of the `financial_aid` table.
+
+## Structure
+
+Just as we did in previous sections, we will explore the basic structure of of the data by examining the first few rows of the table.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT *
+FROM ds_pa_sshe.financial_aid
+LIMIT 5;
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "financial_aid"
+)) %>% head()
+```
+:::
+
+You can see that there are 27 columns in the `financial_aid` table. Now let's examine the number of rows in the table:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*)
+FROM ds_pa_sshe.financial_aid;
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "financial_aid"
+)) %>% tally()
+```
+:::
+
+## Unit of Observation
+
+The `financial_aid` table records information on all financial aid received by a student in a given academic year, so our unit of observation is the student. Let's first take a look at the number of unique `ssn`s in the table and compare that to the total number of rows:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered .unlisted}
+
+```{sql}
+SELECT COUNT(*), COUNT(DISTINCT(ssn))
+FROM ds_pa_sshe.financial_aid
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "financial_aid"
+)) %>% summarise(
+  n_rows=n(),
+  n_people=n_distinct(ssn)
+)
+```
+:::
+
+### Period of Observation
+
+There are almost three times the amount of rows compared to the number of unique students. This is because, like the `enrollment` table and unlike the `completions` table, the `financial_aid` table records information on students at different points in time. Therefore, we need to investigate the period of observation. While the period of observation for the `enrollment` table was the academic term, the period of observation for the `financial_aid` table is the academic year, recorded in the `academic_year` column. Let's look at the number of unique `ssn`-`academic_year` combinations, and see if that gets us closer to our total number of rows:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+WITH dis AS (
+  SELECT DISTINCT ssn, academic_year
+  FROM ds_pa_sshe.financial_aid
+)
+SELECT COUNT(*)
+FROM dis
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "financial_aid")) %>%
+distinct(ssn, academic_year) %>% 
+  tally()
+```
+:::
+
+While we still have some duplication, this gets us much closer to our total number of rows.
+
+### Attributes
+
+There are 25 other columns in the `financial_aid` table. Let's examine the column names:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SHOW COLUMNS from table projects.ds_pa_sshe.financial_aid
+```
+
+## `dbplyr` Query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "financial_aid"
+)) %>% colnames()
+```
+:::
+
+## Coverage
+
+Let's modify our earlier to code to examine the number of records for each `academic_year` in the `financial_aid` table:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL query {.unnumbered}
+
+```{sql}
+
+SELECT academic_year, COUNT(*)
+FROM ds_pa_sshe.financial_aid
+GROUP BY academic_year
+ORDER BY academic_year;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+counts_by_year <- con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_sshe",
+    table = "financial_aid"
+  )) %>% 
+  select(academic_year) %>% 
+  group_by(academic_year) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(academic_year) %>% 
+  collect()
+
+counts_by_year
+```
+:::
+
+And we can also use this same summary dataset to calculate the coverage:
+
+```{r}
+counts_by_year %>% 
+  summarize(
+    min_period = min(academic_year),
+    max_period = max(academic_year)
+  )
+```
+
+From this, we can see that the PASSHE Financial Aid data begins in the 2009-2010 academic year and ends with the 2022-2023 academic year.
+
+## Select Variable Distribution
+
+Let's visualize the table we just generated:
+
+```{r, fig.width=10, fig.height=6}
+counts_by_year %>% 
+  ggplot(aes(
+    x = academic_year,
+    y = as.numeric(n),
+    group = 1
+  )) +
+  geom_line() +
+  labs(x = "Academic Year", y = "Count", title = "Count of Receiving Financial Aid by Academic Year") +
+
+  # rotate x-axis text to avoid overlap
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size=6))
+
+```
+
+### `total_fed_loan`
+
+As a final example for the `financial_aid` table, let's examine the `total_fed_loan` column:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT AVG(total_fed_loans) AS avg_loans, academic_year
+FROM ds_pa_sshe.financial_aid
+GROUP BY academic_year
+ORDER BY academic_year
+
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+avg_by_year <- con %>% 
+  tbl(in_schema(schema = "ds_pa_sshe",
+      table = "financial_aid")) %>% 
+  select(total_fed_loans, academic_year) %>% 
+  group_by(academic_year) %>% 
+  summarize(
+    avg_loans = mean(total_fed_loans)
+  ) %>% 
+  ungroup() %>% 
+  arrange(academic_year) %>% 
+  collect()
+
+avg_by_year
+```
+:::
+
+# PA Wage Data: `ds_pa_dli.wage_records`
+
+The final dataset we want to examine in this notebook is the `wage_records` table. We will first follow the pattern we have established, examining the structure of the `wage_records` table, it's coverage, and select variable coverage. After this, we will explore joining this table with the PASSE tables. Let's take a look at the `wage_records` table's structure:
+
+## Structure
+
+Let's begin by examining the first few rows:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query {.unnumbered}
+
+```{sql}
+SELECT *
+FROM ds_pa_dli.wage_records
+LIMIT 5;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_dli",
+      table = "wage_records")) %>% 
+  head(n=5)
+```
+:::
+
+We can see that there are 12 columns in the `wage_records` table. Now let's find the total number of rows:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*)
+FROM ds_pa_dli.wage_records;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_dli",
+      table = "wage_records")) %>% 
+  tally()
+```
+:::
+
+### Unit of Observation
+
+Now let's examine the unit of observation, once again examining the total number of unique individuals represented in the table and comparing that to the total number of rows.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL query {.unnumbered}
+
+```{sql}
+SELECT COUNT(*) AS n_rows, COUNT(DISTINCT(ssn)) AS n_people
+FROM ds_pa_dli.wage_records
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_dli",
+      table = "wage_records")) %>% 
+  summarize(
+    n_rows = n(),
+    n_people = n_distinct(ssn)
+  )
+```
+:::
+
+We see that there are far fewer unique `ssn` values than total rows in the table. This indicates that `ssn` alone does not define a row of our data - some individuals must appear in the data more than once. So once again, we need to investigate the period of observation.
+
+### Period of Observation
+
+Referring to the tables above, we can see that there are `yr`, `qtr`, and `qtrid` columns, from which we can surmise that the period of observation in the `wage_records` table is the quarter.
+
+Let's look at the amount of unique combinations of `ssn` and `qtr_id` combined:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+WITH dis AS (
+  SELECT DISTINCT qtr_id, ssn
+  FROM ds_pa_dli.wage_records
+)
+SELECT COUNT(*)
+FROM dis;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_dli",
+      table = "wage_records")) %>% 
+  distinct(qtr_id, ssn) %>% 
+tally()
+```
+:::
+
+This gets us significantly closer to our total number of rows, but we are still off by almost a million records. It is possible that individuals have multiple jobs in certain quarters. Let's add the `employer_id` to our analysis:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+WITH dis AS (
+  SELECT DISTINCT qtr_id, ssn, employer_id
+  FROM ds_pa_dli.wage_records
+)
+SELECT COUNT(*)
+FROM dis;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+con %>% 
+  tbl(in_schema(schema = "ds_pa_dli",
+      table = "wage_records")) %>% 
+  distinct(qtr_id, ssn, employer_id) %>% 
+tally()
+```
+:::
+
+## Coverage
+
+Our next step should be to examine the coverage of the `wage_records` table.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL query {.unnumbered}
+
+```{sql}
+
+SELECT yr || qtr AS year_qtr, COUNT(*)
+FROM ds_pa_dli.wage_records
+GROUP BY year_qtr
+ORDER BY year_qtr;
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+counts_by_qtr <- con %>% 
+  tbl(in_schema(
+    schema = "ds_pa_dli",
+    table = "wage_records"
+  )) %>% 
+  mutate(year_qtr = as.numeric(concat(yr, qtr))) %>% 
+  select(year_qtr) %>% 
+  group_by(year_qtr) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  arrange(year_qtr) %>% 
+  collect()
+
+counts_by_qtr
+```
+:::
+
+And we can also use this same summary dataset to calculate the coverage:
+
+```{r}
+counts_by_qtr %>% 
+  summarize(
+    min_qtr = min(year_qtr, na.rm=T),
+    max_qtr = max(year_qtr, na.rm=T)
+  )
+```
+
+From this, we can see that the PASSHE Financial Aid data begins in the 2009-2010 academic year and ends with the 2022-2023 academic year.
+
+## Select Variable Distribution
+
+Finally, lets examine the distribution of a column. Let's go with `wages_real`:
+
+::: {.panel-tabset .unlisted .unnumbered}
+## SQL Query {.unnumbered}
+
+```{sql}
+
+SELECT AVG(wages_real) AS avg_wages, yr || qtr AS year_qtr
+FROM ds_pa_dli.wage_records
+GROUP BY year_qtr
+ORDER BY year_qtr
+
+```
+
+## `dbplyr` query {.unnumbered}
+
+```{r}
+avg_by_qtr <- con %>% 
+  tbl(in_schema(schema = "ds_pa_dli",
+      table = "wage_records")) %>% 
+  mutate(year_qtr = concat(yr, qtr)) %>% 
+  select(year_qtr, wages_real) %>% 
+  group_by(year_qtr) %>% 
+  summarize(
+    avg_wages= mean(wages_real)
+  ) %>% 
+  ungroup() %>% 
+  arrange(year_qtr) %>% 
+  collect()
+
+avg_by_qtr
+```
+:::
+
+And we can visualize the data using a simple line plot:
+
+```{r, fig.width=10, fig.height=5}
+avg_by_qtr %>% 
+  ggplot(aes(
+    x = year_qtr,
+    y = as.numeric(avg_wages),
+    group = 1
+  )) +
+  geom_line() +
+  labs(x = "Quarter", y = "Average Wages", title = "Average Wages by Quarter") +
+
+  # rotate x-axis text to avoid overlap
+  theme(axis.text.x = element_text(angle = 45, hjust=1, size=6))
+
+```
+
+# Joining Wage Records with Higher Education Data
+
+One thing that might be very useful for analysis would be joining the `wage_records` data with the higher education tables. Let's try a first attempt at this:
+
+```{sql, connection = "con"}
+
+SELECT * 
+FROM ds_pa_sshe.completions comp
+LEFT JOIN ds_pa_dli.wage_records wage ON comp.ssn=wage.ssn
+LIMIT 10
+```
+
+This code will return a row for every wage record that matches a completed degree in the `completions` table. We could then use this to calculate, for example, average wages so long after graduation.
+
+However, navigating between the three PASSHE tables and joining with the `wage_records` table can be complicated. As discussed above, these tables are all measured at different periods of observation. Joining each of the PASSHE tables with the `wage_records` table would all require different transformations and aggregations. To make these combinations easier to navigate, we have created data model tables that assign standardized identifiers to the various periods of observation. We will introduce these tables in the next notebook.
+
+# Next Steps: Applying this workbook to your project
+
+This workbook provides a structure for you to start your EDA process on the data within the scope of your project. We have outlined the general structure and distributions of the PASSHE datasets, allowing you to focus on EDA aspects most relevant to your specific project.
+
+As you evaluate further variable distributions, you can repurpose the code chunks in this notebook. In doing so, we recommend noting your findings in your team's project template. As your project progresses, it will be helpful to look back at these notes, especially in thinking through how to most accurately communicate your team's final product to an external audience. Ultimately, the EDA process is an essential step in the project development lifecycle, as it provides helpful contextual information on the variables you may choose to use in your analysis.
+
+For all of these steps, remember not to takes notes or discuss the exact results outside the ADRF. Instead, create notes or output inside the ADRF, and store them either in your U: drive or in your team's folder on the P: drive. When discussing results with your team, remember to speak broadly, and instead direct them to look at specific finfings with the ADRF. As always, feel free to reach out to the Coleridge team if you have any questions as you get used to this workflow!

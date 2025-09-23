@@ -1,0 +1,1069 @@
+---
+title: "Notebook 2 - Cohort and Longitudinal Analysis"
+author: "Chip O'Connell, Corey Sparks"
+subtitle: "Cohort and Cross Sections"
+toc: true
+toc_depth: 3
+toc_float:
+  collapsed: no
+  smooth_scroll: yes
+toc_location: left
+number-sections: true
+format: 
+  html:
+    embed-resources: true
+    df-print: paged
+execute: 
+  warning: false
+---
+
+
+![](images/ada_sticker.png){fig-align="center"}
+
+# Introduction
+```{r setup, include=FALSE}
+#HIDE THIS CHUNK FROM KNITTED OUTPUT
+knitr::opts_chunk$set(include=TRUE, echo=TRUE, eval = FALSE,  warning = FALSE, fig.align = 'center')  #results=‘hide’) # needs to delete results=‘hide’
+```
+Welcome to the second notebook for Module 2 of this course. This notebook will build on the data coverage and structure discussion in the exploratory data analysis notebook to introduce two new methods of analysis.
+
+First, we introduce a method rooted in a specific moment in time, **cross-sectional analysis**. A cross-section is a slice of data recorded at a specific point in time. Cross-section analysis allows us to examine a snapshot of our data so we can evaluate the stock of observations, enabling broad understanding of volume and, in this particular context, enrollment and completion compositions.
+
+Second, we introduce **longitudinal analysis**, which is a method that tracks a single cross-section - or cohort - over time. This method allows for the analysis of long-term trends and patterns.
+
+# Technical Setup
+
+Code chunks in this notebook will be provided in both SQL and R.
+
+Typically, throughout these workbooks, we use SQL for the majority of data exploration and creation of the analytic frame, and then read that analytic frame into R for the descriptive analysis and visualization. You will see options for writing SQL code in R, but not vice versa.
+
+::: {.callout collapse="true"}
+## SQL Setup
+
+In this notebook, we pull a cohort of student data into an R data frame for analysis. Since we are pulling our queries into R from our SQL connection for analysis, we can either use the `dbGetQuery()` workflow that we used in the Foundations Module, where we store our SQL query in an R object, and then pull it into R by calling it in a `dbGetQuery()` function. As a quick reminder, this workflow looks like this (note this is an example and will not actually run):
+
+```{r}
+#| eval: false
+qry <- "INSERT SQL QUERY HERE"
+
+df <- dbGetQuery(con, qry)
+```
+
+Since we will be using this workflow throughout the notebook for our SQL queries, we do not need to connect through DBeaver the way we did in Notebook 1. Instead, we need to follow the procedure below for connecting to the database in R Studio.
+
+*An Alternative *
+If you are using a quarto document to write your code, you can also write your SQL query directly in the quarto document, once you define the `"con"` connection to Redshift, this query will create an R object named `myoutput` :
+
+```{{sql}}
+#| connection: "con"
+#| output.var: "myoutput"
+
+select *
+from yourtable
+```
+
+
+:::
+
+::: {.callout collapse="true"}
+## R Setup
+
+#### Install Packages {.unnumbered}
+
+If you installed the packages introduced in Notebook 1, you do not need to re-install them here, you just need to re-load them. If you installed the packages from Notebook 1, please proceed to the 'Load Libraries' section.
+
+If you did not install the packages from Notebook 1, please follow the steps below to install the necessary packages to follow along with this notebook.
+
+::: callout-note
+In the ADRF, you are limited to installing packages available on the Comprehensive R Archive Networks, commonly referred to as CRAN. CRAN is the primary centralized repository for R packages. Packages must meet certain requirements before they can become available on CRAN. Outside the ADRF, you can install packages available on other repositories, such as those accessible on Github repositories.
+:::
+
+To install a package, in the console in R studio, type the following:
+
+```{r, eval=FALSE}
+install.packages('INSERT_PACKAGE_NAME')
+```
+
+For example, to install the package `RJDBC` (for establishing our connection to the database), you should type:
+
+```{r, eval=FALSE}
+install.packages("RJDBC")
+```
+
+If you run this, you should see a set of messages in your console similar to the below:
+
+![](images/RJDBC_install.png)
+
+After running this, `RJDBC` will be installed for you within your ADRF workspace. You will *not* need to re-install it each time you log back into the workspace.
+
+There are two simple ways to identify if a package has already been installed in your environment:
+
+1.  You can run `library(INSERT_PACKAGE_NAME)`, and if it returns an error like the following, it has not been installed properly:
+
+![](images/error.png)
+
+2.  You can manually check in the bottom right pane inside R Studio by selecting the Packages tab and seeing if the package is available. Packages should be sorted alphabetically and those with a check beside them have not just already been installed, but also loaded into the environment for use:
+
+![](images/package_pane.png)
+
+**To install all of the packages you will need for this notebook, please run the following:**
+
+```{r, eval=FALSE}
+install.packages(RJDBC)
+install.packages(tidyverse)
+install.packages(dbplyr)
+```
+
+Additionally, in order to establish our database connection in R, please install the following custom package that has already been uploaded into the P: drive of this workspace:
+
+```{r, eval=FALSE}
+install.packages("P:\tr-ihep-2025-pa\R_packages\ColeridgeInitiative_0.1.2.zip")
+```
+
+#### Load Libraries {.unnumbered}
+
+After the required packages have been installed, we next need to load them to make them available in our R environment. This is identical to the procedure we followed in the Foundations Module
+
+```{r}
+library(ColeridgeInitiative)
+library(tidyverse)
+library(dbplyr)
+```
+
+#### Establish Database Connection {.unnumbered}
+
+To load data from the Redshift server into R, we need to first set up a connection to the database. The following command will prompt you for password and establish the connection:
+
+```{r}
+options(java.parameters = c("-XX:+UseConcMarkSweepGC", "-Xmx8192m"))
+gc()
+con <- adrf_redshift(usertype = "training")
+```
+
+:::
+
+# Creating a Cohort
+
+Let's begin by defining a cohort. Here we will define our cohort as every student who enrolled in an undergraduate program for the first time in Fall 2015. Let's first extract all unique social security numbers from the `enrollment` table that fit this definition. To do this, we first filter so that we only look at undergraduate students. Then we calculate the earliest academic term an `ssn` appears, and filter only for rows where the earliest term is equal to Fall 2015 (`academic_period_code`=`201520`). Finally, we select only distinct `ssn`'s.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )) %>%
+  filter(ug_gr=="UG") %>% 
+  group_by(ssn) %>% 
+  mutate(min_period=min(academic_period_code)) %>% 
+  filter(academic_period_code==min_period) %>%
+  filter(academic_period_code==201520) %>% 
+  ungroup() %>% 
+  distinct(ssn) %>% 
+  collect()
+```
+
+## SQL Query
+
+```{sql}
+#| connection: "con" 
+#| output.var: "cohort"
+
+SELECT DISTINCT ssn
+FROM (
+  SELECT *, MIN(academic_period_code)
+  OVER (PARTITION BY ssn) AS min_period
+  FROM ds_pa_sshe.enrollment
+  WHERE ug_gr = 'UG'
+)
+WHERE
+  academic_period_code = min_period AND
+  academic_period_code = 201520
+```
+:::
+
+We can see that there are ____` unique students that meet our cohort definition. Let's follow a similar technique, but this time let's keep all of the information on our cohort, not just the `ssn` field.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )) %>%
+  filter(ug_gr=="UG") %>% 
+  group_by(ssn) %>% 
+  mutate(min_period=min(academic_period_code)) %>% 
+  filter(academic_period_code==min_period) %>%
+  filter(academic_period_code==201520) %>% 
+  ungroup() %>%
+  collect()
+```
+
+## SQL Query
+
+```{sql}
+#| connection: "con"
+#| output.var: "cohort"
+SELECT *
+FROM (
+  SELECT *, MIN(academic_period_code) OVER (PARTITION BY ssn) AS min_period
+  FROM ds_pa_sshe.enrollment
+  WHERE ug_gr = 'UG'
+)
+WHERE
+  academic_period_code = min_period AND
+  academic_period_code = 201520
+```
+:::
+
+You can see that this new cohort object has a handful of more observations than the previous one. If you will recall from Notebook 1, when we examined the the number of unique `ssn-academic_term` pairs, we still fell a little short of the total number of rows in the `enrollment` table. In other words, we still have some duplication when we look at it this way. In the case of our current Fall 2015 cohort, it looks like we have __ duplicate `ssn` cases. Let's take a moment to examine why this might be the case:
+
+```{r}
+dupes <- cohort %>%
+  group_by(ssn) %>%
+  filter(n()>1) %>%
+  arrange(ssn)
+
+dupes 
+```
+
+Take a moment to examine the output. Taking a look at the first listed `ssn`, it seems to appear twice. Upon inspection, we can see that this student attended two different campuses in their first semester of enrollment. While we do not have detailed information on why that might be the case, the main campus they were enrolled at didn't offer a course they wanted or needed to take, so they took a course or two at a different campus. This is just one possible reason we might see this scenario.
+
+Let's account for `campus_name` and see if that takes care of the duplication problem.
+
+```{r}
+dupes <- cohort %>%
+  group_by(ssn, campus_name) %>%
+  filter(n()>1)
+
+dupes
+```
+
+This returns an empty table, therefore we can be certain there are no duplicated `ssn-campus_name` pairs in our cohort.
+
+In Notebook 1, we left the duplicates alone, since the goal of that notebook was simply exploration. If we want to begin analyzing our cohort, however, it is important that we have an accurate starting point, so that any completion rates, demographic characteristic distributions, or any other statistics that we calculate are also accurate. One way of getting rid of the duplicates would be to just keep the first duplicate that we come across, which we can do by calculating the row number, or the "rank," of each observation within a group and filtering for the first rank:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )) %>%
+  filter(ug_gr=="UG") %>% 
+  group_by(ssn) %>% 
+  mutate(min_period=min(academic_period_code)) %>% 
+  filter(academic_period_code==min_period) %>%
+  filter(academic_period_code==201520) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank==1)
+```
+
+## SQL Query
+
+```{sql}
+SELECT *
+FROM (
+  SELECT
+    *, 
+    ROW_NUMBER() OVER (PARTITION BY ssn ORDER BY   academic_period_code) AS rank
+  FROM (
+    SELECT *,
+      MIN(academic_period_code) OVER (PARTITION BY ssn) AS min_period
+    FROM ds_pa_sshe.enrollment
+    WHERE ug_gr = 'UG'
+  )
+  WHERE
+    academic_period_code = min_period AND
+    academic_period_code = 201520
+)
+WHERE rank = 1
+```
+:::
+
+However, we might want to have a bit more control over which duplicate is dropped. One way to achieve this would be to first manually sort our data so that the row we want to keep comes first, and then we can drop everything but the first row we come across. To sort our data, we can use `window_order` function in `dbplyr`, which is similar to the `dplyr` arrange function, and in SQL we can simply add an `ORDER BY` statement when calculating `rank`. In this case, let's keep the duplicate record with the highest number of credits attempted for the term:
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )) %>%
+  filter(ug_gr=="UG") %>% 
+  group_by(ssn) %>% 
+  mutate(min_period=min(academic_period_code)) %>% 
+  filter(academic_period_code==min_period) %>%
+  filter(academic_period_code==201520) %>% 
+  window_order(desc(credits_attempted_for_term)) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank==1) %>% 
+  collect()
+```
+
+## SQL Query
+
+```{sql}
+SELECT *
+FROM (
+  SELECT
+    *, ROW_NUMBER() OVER (PARTITION BY ssn ORDER BY credits_attempted_for_term DESC) AS rank
+  FROM (
+    SELECT
+      *, MIN(academic_period_code) OVER (PARTITION BY ssn) AS min_period
+    FROM ds_pa_sshe.enrollment
+    WHERE ug_gr = 'UG'
+  )
+  WHERE
+    academic_period_code = min_period AND
+    academic_period_code = 201520
+)
+WHERE rank = 1;
+```
+:::
+
+Now we have a cohort of unique students who all enrolled in an undergraduate program for the first time in Fall 2015, along with some other information about them, including demographic information, their major, how many credits they attempted (at the institution where attempted the most credits for the academic term, if they were enrolled at multiple campuses), etc. Using our new cohort data frame, we can easily calculate some demographic distributions and other statistics about our cohort.
+
+## Demographics
+
+Let's start analyzing our cohort by examining the distribution of race and ethnicity. We can easily achieve this by grouping by the `race_ethnicity` column and summarizing the number of observations in each group:
+
+```{r}
+cohort %>% 
+  group_by(race_ethnicity) %>% 
+  summarize(n=n())
+```
+
+We can follow a similar process to examine the `sex_code` column among our cohort:
+
+```{r}
+cohort %>% 
+  group_by(sex_code) %>% 
+  summarize(n=n())
+```
+
+## Enrollment by Program
+
+We can also easily examine a breakdown of our cohort's majors:
+
+```{r}
+cohort %>% 
+  group_by(major1_cip6_title) %>% 
+  summarize(n=n()) %>% 
+arrange(desc(n))
+```
+
+## Student Age
+
+If we want to take a look at our cohort's age at time of enrollment, we will need to perform an additional step to subtract the student's date of birth from the start of the semester. In order to get the average student age in years, We also introduce a new function here, `floor()`, which is similar to a rounding function but ensures our age number will always be rounded down:
+
+```{r}
+meanage<-cohort %>% 
+  mutate(age=time_length(difftime(as.Date("2015-09-01"), as.Date(birthday)),"years")) %>% 
+  summarize(avg_age=floor(mean(age, na.rm=T)))
+
+meanage
+cohort %>% 
+  mutate(age=time_length(difftime(as.Date("2015-09-01"), as.Date(birthday)),"years")) %>% 
+ggplot(aes( age))+
+geom_histogram() +
+geom_vline(aes(xintercept =  meanage$avg_age), lty = 2)
+```
+
+As you can, the average age of first time enrollees in Fall 2015 was ___ years old.
+
+# Spring 2016 Completer Cohort
+
+Perhaps we want another cohort to examine for comparative purposes. We have examined our incoming Fall 2015 cohort. Now let's examine the outgoing cohort, and look at all of the undergraduate completer in the Spring 2016 term.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+completer_cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="completions"
+            )) %>%
+  filter(ug_gr=="UG" & academic_period_code==201540) %>% 
+  group_by(ssn) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank==1) %>% 
+  collect()
+```
+
+## SQL Query
+
+```{sql}
+SELECT *
+FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY ssn) AS rank
+  FROM ds_pa_sshe.completions
+  WHERE ug_gr = 'UG' AND academic_period_code=201540
+)
+WHERE rank=1;
+```
+:::
+
+Now, let's join our `completer_cohort` with the `enrollment` table so that we can get demographic information on the students.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+completer_cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="completions"
+            )) %>%
+  filter(ug_gr=="UG" & academic_period_code==201540) %>% 
+  group_by(ssn) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank==1) %>% 
+  left_join(con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )),
+by="ssn") %>% 
+distinct(ssn, sex_code, race_ethnicity) %>% 
+collect()
+```
+
+## SQL Query
+
+```{sql}
+SELECT DISTINCT *
+FROM (
+  SELECT c.ssn AS ssn, sex_code, race_ethnicity
+  FROM (
+    SELECT *
+    FROM (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY ssn) AS rank
+      FROM ds_pa_sshe.completions
+      WHERE ug_gr = 'UG' AND academic_period_code = 201540
+    )
+    WHERE rank = 1
+  ) c
+  LEFT JOIN ds_pa_sshe.enrollment
+    ON (c.ssn = enrollment.ssn)
+)
+```
+:::
+
+Once again we see that we have more observations than completer in our cohort. Let's examine the duplicate `ssn` values in our new `completer_cohort` to see why this might be the case:
+
+```{r}
+dupes <- completer_cohort %>% 
+  group_by(ssn) %>% 
+  filter(n()>1) %>%
+  arrange(ssn)
+
+dupes
+```
+
+Examining the first `ssn` value, we can see that there are two observations associated with this this `ssn` and two different `race_ethnicity` values. It is possible for students to provide different demographic information from term to term. To ensure we have an accurate completion rate, we will once again remove the duplicate values following a similar process as above. Since there is no clear rule to follow as to which value to select, we won't worry about sorting our data here, and simply pick the first row that we come across for that `ssn`:
+
+```{r}
+completer_cohort <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="completions"
+            )) %>%
+  filter(ug_gr=="UG" & academic_period_code==201540) %>% 
+  group_by(ssn) %>% 
+  mutate(rank = row_number()) %>% 
+  filter(rank==1) %>% 
+  left_join(con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )),
+by="ssn") %>% 
+group_by(ssn) %>% 
+mutate(rank = row_number()) %>% 
+filter(rank==1) %>% 
+distinct(ssn, sex_code, race_ethnicity) %>% 
+collect()
+```
+
+## Completer Demographics
+
+Now that we have demographic information for our completer, we can quickly take a look at the distribution of `race_ethnicty` (with the small caveat that we randomly)
+
+```{r}
+completer_cohort %>% 
+  group_by(race_ethnicity) %>% 
+  summarize(n=n()) %>% 
+mutate(cohort = "completer") %>% 
+bind_rows(cohort %>% 
+  group_by(race_ethnicity) %>% 
+  summarize(n=n()) %>% 
+mutate(cohort = "all enrolled")) %>% 
+group_by(cohort) %>% 
+mutate(pct = n/sum(n)) %>% 
+ggplot(aes(x = reorder(race_ethnicity, -pct), y = pct, fill=cohort))+
+geom_col(position="dodge") +
+theme(axis.text.x = element_text(angle =90,  vjust = .1))+
+labs(title = "Distribution of Race/Ethnicity",
+subtitle = "Completers vs All Enrolled")
+```
+
+We can follow a similar process to examine the `sex_code` column among our cohort:
+
+```{r}
+
+completer_cohort %>% 
+  group_by(sex_code) %>% 
+  summarize(n=n()) %>% 
+mutate(cohort = "completer") %>% 
+bind_rows(cohort %>% 
+  group_by(sex_code) %>% 
+  summarize(n=n()) %>% 
+mutate(cohort = "all enrolled")) %>% 
+group_by(cohort) %>% 
+mutate(pct = n/sum(n)) %>% 
+ggplot(aes(x = reorder(sex_code, -pct), y = pct, fill=cohort))+
+geom_col(position="dodge") +
+labs(title = "Distribution of Sex",
+subtitle = "Completers vs All Enrolled")
+
+```
+
+# Longitudinal Analysis
+
+While a cross-sectional analysis is good for examining our cohort at a snapshot in time - for instance, at time of enrollment - if we want to track outcomes for our cohort over time, we will need to shift to a longitudinal analysis. As a first pass at a longitudinal analysis, let's calculate a completion rate for our Fall 2015 cohort. We can do this by joining our cohort with the `completions` table. Let's be sure to join on `award_level` in addition to `ssn` to ensure that our students completed the same degree that they were enrolled for in the Fall 2015 semester.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+cohort2 <- 
+  con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )) %>%
+  filter(ug_gr=="UG") %>% 
+  group_by(ssn) %>% 
+  mutate(min_period=min(academic_period_code)) %>% 
+  filter(academic_period_code==min_period) %>%
+  filter(academic_period_code==201520) %>% 
+  distinct(ssn, award_level, race_ethnicity, sex_code) %>% 
+  left_join(con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="completions")),
+  by=c("ssn", "award_level")) %>%
+  mutate(rank = row_number()) %>% 
+  filter(rank==1) %>% 
+  ungroup() %>% 
+collect()
+```
+
+
+
+
+## SQL Query
+
+```{sql, eval=FALSE}
+SELECT *
+FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY ssn) AS rank
+  FROM (
+    SELECT e.*, award_desc
+    FROM (
+      SELECT DISTINCT ssn, award_level
+      FROM (
+        SELECT
+          *, MIN(academic_period_code) OVER (PARTITION BY ssn) AS min_period
+        FROM ds_pa_sshe.enrollment
+        WHERE ug_gr = 'UG'
+      ) 
+      WHERE
+        academic_period_code = min_period AND
+        academic_period_code = 201520
+    ) e
+    LEFT JOIN ds_pa_sshe.completions
+      ON (
+        e.ssn = completions.ssn AND
+        e.award_level = completions.award_level
+      )
+  )
+)
+WHERE rank = 1;
+```
+
+
+## Completion Rate
+
+Now we can easily calculate a completion rate. We first just need to create a `completed` variable that is equal to 1 if `award_code` is present and 0 if `award_code` is missing (if `award_code` is missing, this indicates that the student was not present in the completions table and returned an empty field in the join above). Then we can take the average of that column across our entire cohort, giving us the average rate of completion:
+
+```{r}
+cohort2 %>%
+mutate(completed=if_else(!is.na(award_desc), 1, 0)) %>%
+summarize(completion_rate=mean(completed))
+```
+
+__% of our cohort has completed a degree as of the most recent data available. *One caveat to make here is that some student's may have completed a degree outside of the PASSHE system. If that is the case, they would not appear in our `completions` table.*
+
+### Completion rate by demographic groups
+We can also begin to analyze outcomes by other variables, here we calculate the completion rates 
+```{r}
+cohort2 %>%
+group_by (sex_code) %>% 
+mutate(completed=if_else(!is.na(award_desc), 1, 0)) %>%
+summarize(completion_rate=mean(completed))
+```
+
+```{r}
+cohort2 %>%
+filter(race_ethnicity %in% c("Black or African American", "White", "Hispanic")) %>% 
+group_by (race_ethnicity) %>% 
+mutate(completed=if_else(!is.na(award_desc), 1, 0)) %>%
+summarize(completion_rate=mean(completed))
+```
+
+## Wages
+
+Aside from completion, another metric we may want to track for our cohort might be wages. Let's combine our cohort with the `wage_records` table. We will also keep our join with the `completions` table so we can compare wages for completer and non-completer. This is a large join that will return a large table. To save memory, after joining with the `completions` table and before joining with `wage_records` table we will keep only `ssn` and `month_award_earned`.
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+
+```{r}
+cohort_wages <- con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="enrollment"
+            )) %>%
+  filter(ug_gr=="UG") %>% 
+  group_by(ssn) %>% 
+  mutate(min_period=min(academic_period_code)) %>% 
+  filter(academic_period_code==min_period) %>%
+  filter(academic_period_code==201520) %>% 
+  distinct(ssn, award_level) %>% 
+  left_join(con %>% 
+    tbl(in_schema(
+      schema="ds_pa_sshe",
+      table="completions")),
+  by=c("ssn", "award_level")) %>%
+  mutate(rank = row_number()) %>% 
+  filter(rank==1) %>% 
+  ungroup() %>% 
+  distinct(ssn, month_award_earned) %>% 
+  left_join(con %>% 
+    tbl(in_schema(
+      schema="ds_pa_dli",
+      table="wage_records")),
+    by="ssn") %>% 
+collect()
+```
+
+## SQL Query
+
+```{sql}
+SELECT
+  "LHS".*,
+  "yr",
+  "qtr",
+  "qtr_id",
+  "employer_id",
+  "cnty_fips",
+  "latitude",
+  "longitude",
+  "naics_level6_code",
+  "wages_nominal",
+  "wages_real",
+  "dollar_year"
+FROM (
+  SELECT DISTINCT "ssn", "month_award_earned"
+  FROM (
+    SELECT "q01".*, ROW_NUMBER() OVER (PARTITION BY "ssn") AS "rank"
+    FROM (
+      SELECT
+        "LHS".*,
+        "academic_period_code",
+        "academic_period_desc",
+        "academic_year",
+        "university_name",
+        "campus_name",
+        "ipeds_unitid",
+        "passhe_student_id",
+        "ug_gr",
+        "award_code",
+        "award_desc",
+        "major1_cip6_code",
+        "major1_cip6_title",
+        "month_award_earned",
+        "age_award_earned",
+        "gpa",
+        "credits_completed_previous",
+        "credits_completed",
+        "credits_completed_total"
+      FROM (
+        SELECT DISTINCT "ssn", "award_level"
+        FROM (
+          SELECT
+            "enrollment".*,
+            MIN("academic_period_code") OVER (PARTITION BY "ssn") AS "min_period"
+          FROM "ds_pa_sshe"."enrollment"
+          WHERE ("ug_gr" = 'UG')
+        ) "q01"
+        WHERE
+          ("academic_period_code" = "min_period") AND
+          ("academic_period_code" = 201520.0)
+      ) "LHS"
+      LEFT JOIN "ds_pa_sshe"."completions"
+        ON (
+          "LHS"."ssn" = "completions"."ssn" AND
+          "LHS"."award_level" = "completions"."award_level"
+        )
+    ) "q01"
+  ) "q01"
+  WHERE ("rank" = 1.0)
+) "LHS"
+LEFT JOIN "ds_pa_dli"."wage_records"
+  ON ("LHS"."ssn" = "wage_records"."ssn")
+```
+:::
+
+The chunk of code above will return a row for every quarter that a student's `ssn` appears in the `wage_records` table. However, because the `completions` table records the month a degree was earned and the `wage_records` table records wages on a quarterly basis, we need to do some quick modifications to our `cohort_wages` data frame. First, we need to split our `month_award_earned` column into its year and month components. Then, we need to convert the month the degree was earned to calendar quarters. These steps will enable comparisons with the `qtr` and `yr` columns from the `wage_records` table:
+
+```{r}
+cohort_wages <- cohort_wages %>% 
+        mutate(award_year=substr(month_award_earned, 1, 4),
+               award_month = substr(month_award_earned, 5, 6), 
+               award_qtr = case_when(
+                                      award_month %in% c("01", "02", "03") ~ 1,
+                                      award_month %in% c("04", "05", "06") ~ 2,
+                                      award_month %in% c("07", "07", "09") ~ 3,
+                                      award_month %in% c("10", "11", "12") ~ 4),
+                completed=if_else(!is.na(month_award_earned),
+                                          "Completed","No Completion"))
+```
+
+## Wages One year and three years from Completion
+
+Now that we have our columns recording the date of completion in the same format as our columns that record date of our wages, we can simply filter for rows where the `yr` and `qtr` columns from the `wage_records` table are equal to one year after the quarter of completion, and then summarize to get our average wages:
+
+```{r}
+cohort_wages %>%
+  ungroup() %>%
+  filter(yr==as.numeric(award_year)+1 & qtr==award_qtr) %>%
+  summarize(mean_wages = mean(as.numeric(wages_nominal, na.rm=T)))
+```
+
+Of course, we can modify the code chunk above to investigate different time periods. For instance, three years after the quarter of completion:
+
+```{r}
+cohort_wages %>%
+  ungroup() %>%
+  filter(yr==as.numeric(award_year)+3 & award_qtr==qtr) %>%
+  summarize(mean(as.numeric(wages_nominal, na.rm=T)))
+```
+
+## Wages for Completers vs. Non-Completers 5 years after enrollment
+
+We might also want to compare the students in our cohort who completed a degree to those who did not. This is a slightly more arbitrary problem, as there is no definitive completion point to use as a cutoff point. One possible solution is to examine wages at some point after enrollment. Below, we look at wages in the quarter five years after enrollment. Since our cohort first enrolled in Fall 2015, which corresponds to Q3 of 2015, five years after enrollment would be Q3 2020. With the way our current `cohort_wages` data frame is setup, we can simply filter for rows equal to this quarter, and then summarize wages for each of our groups.
+
+```{r}
+cohort_wages %>% 
+  filter(yr==2020 & qtr==3) %>%
+  group_by(completed) %>% 
+  summarize(mean(as.numeric(wages_nominal, na.rm=T)))
+```
+
+## Plotting Wages for Completers vs. Non-Completers
+
+Of course, with a longitudinal analysis we do not need to pick any cutoff point, we can examine all of the data points for our cohort that are available to us. There are both benefits and drawbacks to this approach. One benefit is that we can have detailed, granular data that enables us to see insights that more aggregated or truncated data may conceal. However, too many data points can often be overwhelming, and looking at information at certain defined points can help make trends and patterns easier to comprehend. One way to make a large number of data points easier to distill, however, is through visualizations. In the code below, we first filter our `cohort_wages` data frame for rows where the `yr` column is greater than 2020. Then we take the average wage for each of our completer/non-completer groups in each quarter. Then we create a new variable called `year_qtr` to use as our x-axis variable. Finally, we plot our graph.
+
+```{r}
+cohort_wages %>% 
+  filter(yr>2020) %>% 
+  group_by(yr, qtr, completed) %>% 
+summarize(wages = mean(as.numeric(wages_nominal, na.rm=T))) %>% 
+mutate(year_qtr = paste0(yr, '-', qtr)) %>% 
+arrange(yr, qtr) %>% 
+ggplot(aes(x=year_qtr, y=wages, group=completed, color=completed)) +
+geom_line() +
+ggtitle("Quarterly Wages for Fall 2015 Enrollees")
+```
+
+# Reconstructing our Cohort with Data Model Tables
+
+As seen above, the varying time scales of each of our data tables can make the process of joining them all together a bit complicated. For this reason, we have undertaken the process of creating data model tables that seek to make this process easier. The first data model table that we would like to introduce is `pa_fact_quarterly_observation_new`, which can be found in the `tr_ihep_2025_pa` schema. This table summarizes a student's experience across the PASSHE tables. It records one quarter for each student, whether they were enrolled in that quarter, whether they completed a degree in that quarter, their wages for that quarter, and various other data points.
+
+**NOTE** to choose your starting quarter you may look at the `tr_ihep_2025_pa.pa_dim_quarterly_academic_periods` table, which maps academic terms to calendar years and quarters.
+
+```{r}
+cohort_model <- con %>% 
+    tbl(in_schema(
+      schema="tr_ihep_2025_pa",
+      table="pa_fact_quarterly_observation_new")) %>%
+  filter(enrolled_primary_major_level=='UG' & enrollment_status=='Y') %>% 
+  group_by(ssn) %>% 
+  mutate(min_qtr=min(quarter_id)) %>% 
+  filter(quarter_id==min_qtr) %>%
+  filter(quarter_id==60) %>%  ### Corresponds to Fall 2015
+  ungroup() %>% 
+  distinct(ssn) %>% 
+  collect()
+```
+
+## Adding other columns to cohort
+
+We can add in the personal characteristics of each person using the `tr_ihep_2025_pa.pa_mdim_person` table.
+
+```{r}
+cohort_model<-con %>% 
+    tbl(in_schema(
+      schema="tr_ihep_2025_pa",
+      table="pa_fact_quarterly_observation_new")) %>%
+  filter(enrolled_primary_major_level=='UG' & enrollment_status=='Y') %>% 
+  group_by(ssn) %>% 
+  mutate(min_qtr=min(quarter_id)) %>% 
+  filter(quarter_id==min_qtr) %>%
+  filter(quarter_id==60) %>% 
+  ungroup() %>% 
+  distinct(ssn) %>% 
+  left_join(con %>% 
+    tbl(in_schema(
+      schema="tr_ihep_2025_pa",
+      table="pa_fact_quarterly_observation_new")),
+   by="ssn") %>% 
+#join_by("ssn"=="ssn", "quarter_id">="quarter_id")) %>% 
+filter(quarter_id >=60) %>% 
+select(ssn, quarter_id, total_wages, completion_status) %>% 
+collect()
+
+```
+
+
+::: {.panel-tabset .unnumbered .unlisted}
+## `dbplyr` Query
+```{r}
+library(dplyr)
+library(dbplyr)
+
+# Step 1: Define the cohort
+cohort_model <- con %>%
+  tbl(in_schema("tr_ihep_2025_pa", "pa_fact_quarterly_observation_new")) %>%
+  filter(enrolled_primary_major_level == 'UG', enrollment_status == 'Y') %>%
+  group_by(ssn) %>%
+  mutate(min_qtr = min(quarter_id)) %>%
+  filter(quarter_id == min_qtr, quarter_id == 60) %>%
+  ungroup() %>%
+  mutate(quarter_id = min_qtr) %>%
+  distinct(ssn, quarter_id)
+
+# Step 2: Load outcome data
+outcome_data <- con %>%
+  tbl(in_schema("tr_ihep_2025_pa", "pa_fact_quarterly_observation_new"))
+
+# Step 3: Load person data and filter to cohort only
+person_data <- con %>%
+  tbl(in_schema("tr_ihep_2025_pa", "pa_mdim_person")) %>%
+  semi_join(cohort_model, by = "ssn") %>% 
+select(ssn, sex_code, race_ethnicity, pellrecipient)
+
+# Step 4: Join cohort with outcome data (non-equi join on quarter_id)
+result <- cohort_model %>%
+  left_join(outcome_data, join_by(ssn == ssn, quarter_id <= quarter_id)) %>%
+  filter(quarter_id.y >= 60) %>%
+  select(ssn, 
+         cohort_qtr = quarter_id.x, 
+         outcome_qtr = quarter_id.y,
+         total_wages, 
+         completion_status)
+
+# Step 5: Join person-level metadata into result
+result_with_person <- result %>%
+  left_join(person_data, by = "ssn")
+
+# Step 6: Pull to R
+final_result <- result_with_person %>%
+  collect()
+
+```
+
+## SQL query
+
+```{sql, eval=FALSE}
+SELECT "LHS".*, "sex_code", "race_ethnicity", "pellrecipient"
+FROM (
+  SELECT
+    "ssn",
+    "quarter_id.x" AS "cohort_qtr",
+    "quarter_id.y" AS "outcome_qtr",
+    "total_wages",
+    "completion_status"
+  FROM (
+    SELECT
+      "LHS"."ssn" AS "ssn",
+      "LHS"."quarter_id" AS "quarter_id.x",
+      "pa_fact_quarterly_observation_new"."quarter_id" AS "quarter_id.y",
+      "enrollment_status",
+      "enrolled_primary_institution",
+      "enrolled_primary_hours_attempted",
+      "enrolled_primary_hours_completed",
+      "enrolled_primary_full_time_ind",
+      "enrolled_first_time",
+      "enrolled_primary_major",
+      "enrolled_primary_degree_sought",
+      "enrolled_primary_residency",
+      "number_enrollments",
+      "primary_institution_total_price",
+      "primary_institution_grant_aid",
+      "primary_institution_loan_aid",
+      "primary_institution_work_aid",
+      "primary_institution_pell",
+      "completion_status",
+      "completed_primary_degree",
+      "completed_primary_major",
+      "completed_primary_institution",
+      "number_completions",
+      "employed_status",
+      "primary_employer_id",
+      "primary_employer_wages",
+      "naics_level6_code",
+      "total_wages",
+      "employer_count",
+      "enrolled_primary_major_area",
+      "completed_primary_degree_area",
+      "enrolled_primary_major_level",
+      "completed_primary_degree_level"
+    FROM (
+      SELECT DISTINCT "ssn", "min_qtr" AS "quarter_id"
+      FROM (
+        SELECT
+          "pa_fact_quarterly_observation_new".*,
+          MIN("quarter_id") OVER (PARTITION BY "ssn") AS "min_qtr"
+        FROM "tr_ihep_2025_pa"."pa_fact_quarterly_observation_new"
+        WHERE
+          ("enrolled_primary_major_level" = 'UG') AND
+          ("enrollment_status" = 'Y')
+      ) "q01"
+      WHERE ("quarter_id" = "min_qtr") AND ("quarter_id" = 60.0)
+    ) "LHS"
+    LEFT JOIN "tr_ihep_2025_pa"."pa_fact_quarterly_observation_new"
+      ON (
+        "LHS"."ssn" = "pa_fact_quarterly_observation_new"."ssn" AND
+        "LHS"."quarter_id" <= "pa_fact_quarterly_observation_new"."quarter_id"
+      )
+  ) "q01"
+  WHERE ("quarter_id.y" >= 60.0)
+) "LHS"
+LEFT JOIN (
+  SELECT "ssn", "sex_code", "race_ethnicity", "pellrecipient"
+  FROM "tr_ihep_2025_pa"."pa_mdim_person"
+  WHERE EXISTS (
+    SELECT 1 FROM (
+    SELECT DISTINCT "ssn", "min_qtr" AS "quarter_id"
+    FROM (
+      SELECT
+        "pa_fact_quarterly_observation_new".*,
+        MIN("quarter_id") OVER (PARTITION BY "ssn") AS "min_qtr"
+      FROM "tr_ihep_2025_pa"."pa_fact_quarterly_observation_new"
+      WHERE
+        ("enrolled_primary_major_level" = 'UG') AND
+        ("enrollment_status" = 'Y')
+    ) "q01"
+    WHERE ("quarter_id" = "min_qtr") AND ("quarter_id" = 60.0)
+) "RHS"
+    WHERE ("pa_mdim_person"."ssn" = "RHS"."ssn")
+  )
+) "RHS"
+  ON ("LHS"."ssn" = "RHS"."ssn")
+
+```
+:::
+
+## Average Wages 1 Year after Completion
+
+```{r}
+final_result %>% 
+group_by(ssn) %>% 
+  mutate(wages_4_qtrs_after = as.numeric(if_else(completion_status=='Y',
+    lead(total_wages, 4), NA))) %>%
+ungroup() %>% 
+  summarize(mean(wages_4_qtrs_after, na.rm=T))
+```
+
+## Average wages 3 Years after
+
+```{r}
+final_result %>% 
+group_by(ssn) %>% 
+  mutate(wages_12_qtrs_after = as.numeric(if_else(completion_status=='Y',
+    lead(total_wages, 12), NA))) %>% 
+ungroup() %>% 
+  summarize(avg_wages=mean(wages_12_qtrs_after, na.rm=T))
+```
+
+## Completion Rate
+
+```{r}
+final_result %>%
+  group_by(ssn) %>%
+  mutate(completer=if_else(any(completion_status=='Y'), 1, 0)) %>%
+  ungroup() %>%
+  distinct(ssn, completer) %>%
+  summarize(completion_rate=mean(completer))
+```
+
+## Wages for Completers vs. Non-Completers 5 years after enrollment
+
+```{r}
+final_result %>%
+  group_by(ssn) %>%
+  mutate(completer=if_else(any(completion_status=='Y'), 1, 0)) %>%
+  filter(outcome_qtr>80) %>%
+  group_by(completer) %>%
+  summarize(mean(as.numeric(total_wages), na.rm=T))
+```
+
+## Plotting Wages
+
+```{r}
+final_result %>%
+  group_by(ssn) %>% 
+  mutate(completer=if_else(any(completion_status=='Y'), 1, 0)) %>%
+  filter(outcome_qtr>60 & outcome_qtr<90) %>% 
+  group_by(completer, outcome_qtr) %>%
+  summarize(wages=mean(as.numeric(total_wages), na.rm=T)) %>% 
+arrange(outcome_qtr) %>% 
+ggplot(aes(x=outcome_qtr,
+    y=wages,
+    group=as.factor(completer),
+    color=as.factor(completer))) +
+geom_line() +
+labs(title = "Quarterly Wages for Fall 2015 Enrollees", subtitle = "Completers vs. Non-Completers")+
+#ylim(c(0, 16000))+
+geom_smooth(method = "lm")
+
+```
+
+# Next Steps: Applying this workbook to your project
+
+This workbook provides a structure for you to start your cohort creation and outcome measurement process on the data within the scope of your project. We have outlined the general methods for linking the PASSHE datasets, and creating a cohort with longitudinal outcomes analysis, allowing you to focus on the same aspects most relevant to your specific project.
+
+As you evaluate further variable distributions, you can repurpose the code chunks in this notebook. In doing so, we recommend noting your findings in your team's project template. As your project progresses, it will be helpful to look back at these notes, especially in thinking through how to most accurately communicate your team's final product to an external audience. Ultimately, the EDA process is an essential step in the project development life cycle, as it provides helpful contextual information on the variables you may choose to use in your analysis.
+
+For all of these steps, remember not to takes notes or discuss the exact results outside the ADRF. Instead, create notes or output inside the ADRF, and store them either in your U: drive or in your team's folder on the P: drive. When discussing results with your team, remember to speak broadly, and instead direct them to look at specific findings with the ADRF. As always, feel free to reach out to the Coleridge team if you have any questions as you get used to this workflow!

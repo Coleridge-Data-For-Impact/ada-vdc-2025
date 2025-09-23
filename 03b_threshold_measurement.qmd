@@ -1,0 +1,227 @@
+---
+title: "Module 2: Notebook 3b"
+author: "Corey Sparks, PhD and Chip O'Connell, PhD"
+subtitle: Measuring Thresholds
+toc: true
+toc_depth: 3
+toc_float:
+  collapsed: no
+  smooth_scroll: yes
+toc_location: left
+number-sections: true
+format: 
+  html:
+    embed-resources: true
+    df-print: paged
+---
+
+
+
+![](images/ada_sticker.png){fig-align="center"}
+
+# Introduction
+
+Welcome to the first workbook for Module 2 of this course, covering 
+
+
+**Exploratory Data Analysis**, or EDA.
+
+In the Foundations Module, we introduced EDA within the larger process of **data discovery**. EDA helps you ensure that the provided data suits your desired analysis and that you have the necessary understanding to make informed analytic decisions as you work through your project. In this workbook, we are going to be exploring the main higher education data sets we will use in this course: the Pennsylvania State System of Higher Education's (PASSHE) `enrollment`, `completions`, and `financial_aid` data sets. For each data set, we will work to answer the following key data discovery questions:
+
+-   **What is the structure of the data set?** What is the layout of the data? What variables are available? What are their types? How do we interpret the meaning of a single row?
+
+-   **What is the coverage of the data set?** What years, geographic regions, institutions, and other subgroups are covered by the data?
+
+-   **What is the distribution of the variables in the data set?** Are there missing observations, outliers, and other aspects we need to adjust for later in analysis? Are there any interesting patterns worth further investigating?
+
+## The Purpose of these Notebooks
+
+You will now have the opportunity to apply the skills covered in both modules thus far to restricted use PASSHE data. With your team, you will carry out a detailed analysis of this data and prepare a final project showcasing your results.
+
+These workbooks are here to help you along in this project development by showcasing how to apply the techniques discussed in class to the PASSHE data. Part of this notebook will be technical - providing basic code snippets your team can **modify** to begin parsing through the data. As always, however, there will also be an applied data literacy component of these workbooks, and it should help you develop a better understanding of the structure and use of the underlying data even if you never writer a line of code.
+
+The timeline for completing these workbooks will be provided on the training website and communicated to you in class.
+
+# Technical Setup
+
+Code chunks in this notebook will be provided in both SQL and R, so follow the setup sections below if you are interested in establishing your own SQL and R environments for running the code.
+
+Typically, throughout these workbooks, we use SQL for the majority of data exploration and creation of the analytic frame, and then read that analytic frame into R for the descriptive analysis and visualization. You will see options for writing SQL code in R, but not vice versa. We discuss this approach in a later section.
+
+::: {.callout collapse="true"}
+## SQL Setup
+
+For working with the database directly using SQL, the easiest way is to still copy the SQL commands from this notebook (available within the `SQL Query` tab views) into a script in DBeaver. As a reminder, the steps to do so are as follows:
+
+1.  Open DBeaver, located on the ADRF Desktop. The icon looks like this
+
+![](images/dbeaver.png)
+
+2.  Establish your connection to the database by logging in. To do this, double-click `Redshift11_projects` on the left hand side, and it will ask for your username and password. Your username is `adrf\` followed by the name of your U: drive folder - for example, `adrf\JOhn.Doe.T00113`. Your password is the same password that you use to log into the ADRF.
+
+After you successfully establish your connection, you should see a green check next to the database name, like so:
+
+![](images/success.png)
+
+3.  In the top menu bar, click **SQL Editor** then **New SQL Script**:
+
+![](images/new_script.png)
+
+4.  To test if your connection is working, try pasting the following chunk of code into your script:
+
+```{sql, eval=FALSE}
+SELECT *
+FROM ds_pa_sshe.enrollment
+LIMIT 5;
+```
+
+Then run it by clicking the run button next to the script, or by pressing CTRL + ENTER.
+
+5.  You should then be able to see the query output in the box below the code.
+:::
+
+::: {.callout collapse="true"}
+## R Setup
+
+#### Install Packages {.unnumbered}
+
+Because we have left the world of the Foundations Module and entered a new workspace, we need to re-install packages that are not native to the base R environment. **We only need to do this once - this workflow for programming in R is identical to that outside the ADRF.**
+
+::: callout-note
+In the ADRF, you are limited to installing packages available on the Comprehensive R Archive Networks, commonly referred to as CRAN. CRAN is the primary centralized repository for R packages. Packages must meet certain requirements before they can become available on CRAN. Outside the ADRF, you can install packages available on other repositories, such as those accessible on Github repositories.
+:::
+
+To install a package, in the console in R studio, type the following:
+
+```{r, eval=FALSE}
+install.packages('INSERT_PACKAGE_NAME')
+```
+
+For example, to install the package `RJDBC` (for establishing our connection to the database), you should type:
+
+```{r, eval=FALSE}
+install.packages("RJDBC")
+```
+
+If you run this, you should see a set of messages in your console similar to the below:
+
+![](images/RJDBC_install.png)
+
+After running this, `RJDBC` will be installed for you within your ADRF workspace. You will not need to reinstall it each time you log back into the workspace.
+
+There are two simple ways to identify if a package has already been installed in your environment:
+
+1.  You can run `library(INSERT_PACKAGE_NAME)`, and if it returns an error like the following, it has not been installed properly:
+
+![](images/error.png)
+
+2.  You can manually check in the bottom right pane inside R Studio by selecting the Packages tab and seeing if the package is available. Packages should be sorted alphabetically and those with a check beside them have not just already been installed, but also loaded into the environment for use:
+
+![](images/package_pane.png)
+
+**To install all of the packages you will need for this notebook, please run the following:**
+
+```{r, eval=FALSE}
+install.packages(RJDBC)
+install.packages(tidyverse)
+install.packages(dbplyr)
+```
+
+Additionally, in order to establish our database connection in R, please install the following custom package that has already been uploaded into the P: drive of this workspace:
+
+```{r, eval=FALSE}
+install.packages("P:/tr-ihep-2025-pa/R_packages/ColeridgeInitiative_0.1.1.zip")
+```
+
+#### Load Libraries {.unnumbered}
+
+After installing these packages, we next need to load them to make them available in our R environment. This is identical to the procedure we followed in the Foundations Module
+
+```{r}
+library(ColeridgeInitiative)
+library(tidyverse)
+library(dbplyr)
+```
+
+#### Establish Database Connection {.unnumbered}
+
+To load data from the Redshift server into R, we need to first set up a connection to the database. The following command will prompt you for password and establish the connection:
+
+```{r}
+con <- adrf_redshift(usertype = "training")
+```
+:::
+
+
+
+## Structure
+
+Let's begin answering our key data discovery questions. First - what is the structure of the PASSHE Enrollment data? There are two dimensions to this question:
+
+
+::: {.panel-tabset .unnumbered .unlisted}
+## SQL Query
+
+```{sql, connection = con}
+with cohort as (select * 
+from tr_ihep_2025_pa.nb_cohort_2015
+limit 25),
+wages as (
+select a.quarter_id as wage_id,
+a.employed_status as employed,
+a.total_wages as wages
+from tr_ihep_2025_pa.pa_fact_quarterly_observation_new a
+),
+select cohort.ssn, wage_id, employed, wages
+from cohort 
+join wages on cohort.ssn = wages.ssn and wage_id > cohort.quarter_id
+
+```
+
+## `dbplyr` query
+
+```{r}
+nb_cohort <-con %>% 
+  tbl(in_schema(schema = "tr_ihep_2025_pa",
+      table = "nb_cohort_2015")) %>% 
+  head(n=20) %>% 
+collect()
+```
+:::
+
+```{sql, connection = con}
+
+
+with a as (select * 
+from tr_ihep_2025_pa.nb_cohort_2015
+),
+completion as(
+select b.ssn,
+b.quarter_id as comp_id,
+b.completed_primary_degree , 
+b.completed_primary_major , 
+b.completed_primary_institution , 
+b.completed_primary_degree_area 
+from tr_ihep_2025_pa.pa_fact_quarterly_observation_new b
+where b.completion_status = 'Y' and b.completed_primary_degree_level='UG'),
+wages as (
+select a.ssn, 
+a.quarter_id as wage_id,
+a.employed_status as employed,
+a.total_wages as wages
+from tr_ihep_2025_pa.pa_fact_quarterly_observation_new a
+where a.employed_status ='Y'
+)
+select a.ssn,a.nb_quarter,completion.comp_id, coalesce (completion.comp_id - a.nb_quarter)/4 as comp_time, wages.wage_id, wages.wages ,
+coalesce (wages.wage_id - a.nb_quarter)/4 as wage_yrs
+from a
+--join wages on cohort.ssn = wages.ssn and wage_id > cohort.nb_quarter
+left join completion  on a.ssn = completion.ssn and completion.comp_id >a.nb_quarter
+join wages on a.ssn = wages.ssn and wages.wage_id > completion.comp_id
+order by a.ssn, completion.comp_id, wages.wage_id
+;
+
+
+
+```
+

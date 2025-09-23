@@ -1,0 +1,53 @@
+project:
+  type: book
+  output-dir: docs
+
+
+book:
+  title: "Enrollment to Employment Applied Data Analytics 2024 Class"
+  subtitle: "Evaluating Enrollment to Employment Pathways in Arkansas"
+  author: "Coleridge Initiative"
+  date: last-modified 
+  date-format: "[Last Updated on] DD MMMM, YYYY"
+  page-navigation: true
+  chapters:
+    - index.qmd
+    - part: "Notebooks"
+      chapters:
+        - ..//01_Notebook_EDA.qmd
+        - ..//02_cohort_cross_section.qmd
+        - ..//04_threshold_measurement.qmd
+        - ..//05_export_and_presentation.qmd
+    - part: "Dimensional Model Scripts"
+      chapters:
+        - ..//03a_data_model_introduction.qmd
+    - part: "Supplemental"
+      chapters:
+        - ..//installing_packages.qmd
+ 
+  search:
+      location: sidebar
+      type: textbox
+      limit: 3
+  sidebar:
+    background: "#4c2a9d"
+    search: true
+    style: floating
+    tools: 
+      - icon: github
+        href: https://coleridge-initiative.github.io/ada-2025-vdc/
+
+format:
+  html:
+    backgroundcolor: "white"
+    highlight-style: arrow
+    embed-resources: false
+    toc: true
+    df-print: paged
+    number-depth: 1
+    number-sections: false
+
+execute: 
+  error: false
+
+
