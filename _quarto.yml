@@ -6,6 +6,7 @@ project:
 book:
   title: "Value Data Collaborative Applied Data Analytics 2025 Class"
   author: "Coleridge - Data for Impact"
+  doi: "10.5281/zenodo.18704132"
   date: last-modified
   date-format: "[Last Updated on] DD MMMM, YYYY"
   page-navigation: true
