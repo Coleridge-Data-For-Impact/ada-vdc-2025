@@ -167,8 +167,8 @@ We can break down the development of Threshold 0 into the following steps:
 This query will use our cohort table `tr_ihep_2025_pa.nb_cohort_model` and link to the quarterly data model table, to get information on the quarter and year the degree was earned, and the institution the degree was received from. Next we link to the total cost of attendance table to get the total cost and the amount of loans received. 
 
 ```{sql}
-#| connection: con
-#| output.var: "cohort"
+--| connection: con
+--| output.var: "cohort"
 select a.*,
   pfqon.completed_primary_institution ,
   pfqon.completed_primary_degree_area ,
@@ -319,8 +319,8 @@ Because we will need to inflation-adjust wage records, we add in an additional j
 > Note: We will keep earnings at the quarterly grain despite developing the thresholds at the yearly level, as we will find the years relative to each individual's exit after providing the inflation adjustment. Although this distinction (relative to focusing on the calendar years relative to graduation) matters less as we look at longer term outcomes, it may affect one- and three-year outlooks.
 
 ```{sql}
-#| connection: con
-#| output.var: "cohort_wages"
+--| connection: con
+--| output.var: "cohort_wages"
 
 with cohort as(
 select a.*,

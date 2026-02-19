@@ -55,8 +55,8 @@ Since we will be using this workflow throughout the notebook for our SQL queries
 If you are using a quarto document to write your code, you can also write your SQL query directly in the quarto document, once you define the `"con"` connection to Redshift, this query will create an R object named `myoutput` :
 
 ```{{sql}}
-#| connection: "con"
-#| output.var: "myoutput"
+--| connection: "con"
+--| output.var: "myoutput"
 
 select *
 from yourtable
@@ -169,8 +169,8 @@ cohort <-
 ## SQL Query
 
 ```{sql}
-#| connection: "con" 
-#| output.var: "cohort"
+--| connection: "con"
+--| output.var: "cohort"
 
 SELECT DISTINCT ssn
 FROM (
@@ -209,8 +209,8 @@ cohort <-
 ## SQL Query
 
 ```{sql}
-#| connection: "con"
-#| output.var: "cohort"
+--| connection: "con"
+--| output.var: "cohort"
 SELECT *
 FROM (
   SELECT *, MIN(academic_period_code) OVER (PARTITION BY ssn) AS min_period
