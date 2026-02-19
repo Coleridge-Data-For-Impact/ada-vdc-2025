@@ -7,23 +7,23 @@ book:
   title: "Enrollment to Employment Applied Data Analytics 2024 Class"
   subtitle: "Evaluating Enrollment to Employment Pathways in Arkansas"
   author: "Coleridge Initiative"
-  date: last-modified 
+  date: last-modified
   date-format: "[Last Updated on] DD MMMM, YYYY"
   page-navigation: true
   chapters:
     - index.qmd
     - part: "Notebooks"
       chapters:
-        - ..//01_Notebook_EDA.qmd
-        - ..//02_cohort_cross_section.qmd
-        - ..//04_threshold_measurement.qmd
-        - ..//05_export_and_presentation.qmd
+        - 01_Notebook_EDA.qmd
+        - 02_cohort_cross_section.qmd
+        - 04_threshold_measurement.qmd
+        - 05_export_and_presentation.qmd
     - part: "Dimensional Model Scripts"
       chapters:
-        - ..//03a_data_model_introduction.qmd
+        - 03a_data_model_introduction.qmd
     - part: "Supplemental"
       chapters:
-        - ..//installing_packages.qmd
+        - installing_packages.qmd
  
   search:
       location: sidebar
@@ -47,7 +47,7 @@ format:
     number-depth: 1
     number-sections: false
 
-execute: 
-  error: false
+execute:
+  eval: false
 
 
