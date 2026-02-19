@@ -4,9 +4,8 @@ project:
 
 
 book:
-  title: "Enrollment to Employment Applied Data Analytics 2024 Class"
-  subtitle: "Evaluating Enrollment to Employment Pathways in Arkansas"
-  author: "Coleridge Initiative"
+  title: "Value Data Collaborative Applied Data Analytics 2025 Class"
+  author: "Coleridge - Data for Impact"
   date: last-modified
   date-format: "[Last Updated on] DD MMMM, YYYY"
   page-navigation: true
@@ -35,7 +34,7 @@ book:
     style: floating
     tools: 
       - icon: github
-        href: https://coleridge-initiative.github.io/ada-2025-vdc/
+        href: https://coleridge-data-for-impact.github.io/ada-vdc-2025/
 
 format:
   html:
